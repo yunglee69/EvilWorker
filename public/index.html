@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worker Dashboard</title>
+    <title>PHANTOM Dashboard</title>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Chart.js -->
@@ -23,9 +23,10 @@
             min-height: 100vh;
             padding: 24px;
             color: #e0e8f0;
-            backdrop-filter: blur(2px);
+            transition: background 0.4s ease, color 0.4s ease;
         }
 
+        /* ----- GLASS BASE (dark) ----- */
         .glass {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(16px) saturate(180%);
@@ -33,6 +34,7 @@
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 24px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+            transition: background 0.4s ease, border 0.4s ease, box-shadow 0.4s ease;
         }
 
         .container {
@@ -40,7 +42,120 @@
             margin: 0 auto;
         }
 
-        /* Header */
+        /* ----- LIGHT THEME OVERRIDES ----- */
+        body.light-glass {
+            background: radial-gradient(circle at 20% 30%, #e8edf5, #d0d8e5);
+            color: #1a1f2a;
+        }
+
+        body.light-glass .glass {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+        }
+
+        body.light-glass .header h1 {
+            background: linear-gradient(135deg, #4a2c8a, #2a5f8a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        body.light-glass .stat-card .value {
+            background: linear-gradient(135deg, #1a1f2a, #3a4f6a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        body.light-glass .stat-card label,
+        body.light-glass .stat-card .sub {
+            color: rgba(0, 0, 0, 0.6);
+        }
+
+        body.light-glass .badge {
+            background: rgba(0, 0, 0, 0.08);
+            color: #1a1f2a;
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        body.light-glass .action-btn {
+            color: #1a1f2a;
+            border-color: rgba(0, 0, 0, 0.15);
+        }
+        body.light-glass .action-btn:hover {
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        body.light-glass .action-btn.cookie {
+            border-color: rgba(200, 150, 0, 0.3);
+            color: #b8860b;
+        }
+
+        body.light-glass .toolbar input,
+        body.light-glass .toolbar select {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(0, 0, 0, 0.1);
+            color: #1a1f2a;
+        }
+        body.light-glass .toolbar input::placeholder {
+            color: rgba(0, 0, 0, 0.4);
+        }
+        body.light-glass .toolbar input:focus,
+        body.light-glass .toolbar select:focus {
+            border-color: #7c4dff;
+            box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.2);
+        }
+        body.light-glass .toolbar select option {
+            background: #f0f4ff;
+            color: #1a1f2a;
+        }
+
+        body.light-glass .btn {
+            color: #1a1f2a;
+            border-color: rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        body.light-glass .btn:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        body.light-glass .btn-primary {
+            background: linear-gradient(135deg, #536dfe, #7c4dff);
+            color: #fff;
+            border-color: transparent;
+        }
+        body.light-glass .btn-primary:hover {
+            background: linear-gradient(135deg, #6a7ffc, #9464ff);
+        }
+
+        body.light-glass .modal-content {
+            background: rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(20px);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        body.light-glass .modal pre {
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        body.light-glass .toast {
+            background: rgba(255, 255, 255, 0.9);
+            color: #1a1f2a;
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        body.light-glass .ws-dot.online {
+            background: #2b8c3e;
+            box-shadow: 0 0 12px #2b8c3e;
+        }
+        body.light-glass .ws-dot.offline {
+            background: #c92a2a;
+            box-shadow: 0 0 12px #c92a2a;
+        }
+
+        /* ----- Header ----- */
         .header {
             display: flex;
             justify-content: space-between;
@@ -102,7 +217,7 @@
             border-color: transparent;
         }
 
-        /* Stats row */
+        /* ----- Stats ----- */
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -139,7 +254,7 @@
             margin-top: 4px;
         }
 
-        /* Toolbar */
+        /* ----- Toolbar ----- */
         .toolbar {
             display: flex;
             flex-wrap: wrap;
@@ -174,6 +289,7 @@
 
         .toolbar select option {
             background: #1a1f2a;
+            color: #e0e8f0;
         }
 
         .ws-status {
@@ -201,7 +317,7 @@
             box-shadow: 0 0 12px #ff6b6b;
         }
 
-        /* Table */
+        /* ----- Table ----- */
         .table-wrap {
             overflow-x: auto;
             padding: 4px;
@@ -271,7 +387,7 @@
             border-color: #ffd700;
         }
 
-        /* Map & Chart */
+        /* ----- Map & Chart ----- */
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -302,7 +418,7 @@
             height: 100% !important;
         }
 
-        /* Modal */
+        /* ----- Modal ----- */
         .modal {
             display: none;
             position: fixed;
@@ -355,7 +471,7 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        /* Toast */
+        /* ----- Toast ----- */
         .toast {
             position: fixed;
             bottom: 24px;
@@ -380,22 +496,19 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Responsive */
+        /* ----- Responsive ----- */
         @media (max-width: 768px) {
             .grid-2 {
                 grid-template-columns: 1fr;
             }
-
             .header {
                 flex-direction: column;
                 align-items: stretch;
             }
-
             .toolbar {
                 flex-direction: column;
                 align-items: stretch;
             }
-
             .ws-status {
                 margin-left: 0;
                 justify-content: flex-end;
@@ -415,13 +528,24 @@
             color: #e0e8f0 !important;
             border: 1px solid rgba(255, 255, 255, 0.05) !important;
         }
+
+        body.light-glass .leaflet-control-zoom a {
+            background: rgba(255, 255, 255, 0.3) !important;
+            color: #1a1f2a !important;
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
+        body.light-glass .leaflet-popup-content-wrapper {
+            background: rgba(255, 255, 255, 0.9) !important;
+            color: #1a1f2a !important;
+            border-color: rgba(0, 0, 0, 0.1) !important;
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <!-- Header -->
     <header class="header glass">
-        <h1>🕵️ EvilWorker</h1>
+        <h1>👻 PHANTOM</h1>
         <div class="header-actions">
             <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
             <button class="btn btn-primary" onclick="exportAll()">📦 Export ZIP</button>
@@ -496,19 +620,27 @@
 <!-- Leaflet JS & Chart.js -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ---------- Theme ----------
+    // ---------- THEME TOGGLE ----------
     function toggleTheme() {
-        document.body.classList.toggle('light');
-        // We'll keep it dark-only for glass effect, but we can add a light variant if needed
-        // For now, just a placeholder.
+        document.body.classList.toggle('light-glass');
+        const isLight = document.body.classList.contains('light-glass');
+        localStorage.setItem('theme', isLight ? 'light' : 'dark');
     }
 
-    // ---------- State ----------
+    // Restore theme preference
+    (function restoreTheme() {
+        const saved = localStorage.getItem('theme');
+        if (saved === 'light') {
+            document.body.classList.add('light-glass');
+        }
+    })();
+
+    // ---------- STATE ----------
     let allLogs = [];
     let map = null;
     let chart = null;
 
-    // ---------- WebSocket (secure) ----------
+    // ---------- WEBSOCKET (secure) ----------
     const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
     const ws = new WebSocket(wsProtocol + location.host);
     const wsDot = document.getElementById('wsDot');
@@ -539,7 +671,7 @@
         setTimeout(() => { toast.remove(); }, 4000);
     }
 
-    // ---------- Fetch logs ----------
+    // ---------- FETCH LOGS ----------
     async function refreshLogs() {
         try {
             const res = await fetch('/api/logs');
@@ -561,9 +693,7 @@
         const now = new Date();
         let filtered = logs;
 
-        if (search) {
-            filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
-        }
+        if (search) filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
         if (filter === 'today') {
             filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
         } else if (filter === 'week') {
@@ -608,9 +738,9 @@
                         if (match) username = decodeURIComponent(match[1]);
                     }
                 }
-                ip = first.proxyRequestHeaders?.['cf-connecting-ip'] || 
-                     first.proxyRequestHeaders?.['x-real-ip'] || 
-                     first.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                ip = first.proxyRequestHeaders?.['cf-connecting-ip'] ||
+                     first.proxyRequestHeaders?.['x-real-ip'] ||
+                     first.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() ||
                      'N/A';
                 const userCell = document.getElementById(`user-${filename}`);
                 if (userCell) userCell.textContent = username;
@@ -629,7 +759,7 @@
         }
     }
 
-    // ---------- Map (placeholder) ----------
+    // ---------- MAP ----------
     function updateMap(logs) {
         if (!map) {
             map = L.map('map').setView([20, 0], 2);
@@ -640,12 +770,12 @@
         map.eachLayer(layer => {
             if (layer instanceof L.Marker) map.removeLayer(layer);
         });
-        // For demo, just a single marker with info
+        // Placeholder — will be replaced with real IP markers later
         L.marker([20, 0]).addTo(map)
             .bindPopup('📍 IP locations will appear here once you have captures.');
     }
 
-    // ---------- Chart ----------
+    // ---------- CHART ----------
     function updateChart(logs) {
         const ctx = document.getElementById('captureChart').getContext('2d');
         const now = new Date();
@@ -689,12 +819,12 @@
         });
     }
 
-    // ---------- Search/Filter ----------
+    // ---------- FILTER ----------
     function filterTable() {
         renderTable(allLogs);
     }
 
-    // ---------- View Log ----------
+    // ---------- VIEW LOG ----------
     async function viewLog(filename) {
         const modal = document.getElementById('modal');
         const title = document.getElementById('modalTitle');
@@ -741,7 +871,7 @@
         }
     }
 
-    // ---------- Cookie Injector ----------
+    // ---------- COOKIE INJECTOR ----------
     async function injectCookies(filename) {
         try {
             const res = await fetch(`/api/log/${filename}`);
@@ -777,7 +907,7 @@
         }
     }
 
-    // ---------- Export all ----------
+    // ---------- EXPORT ----------
     async function exportAll() {
         try {
             const res = await fetch('/api/export/all');
@@ -800,7 +930,7 @@
         }
     }
 
-    // ---------- Modal close ----------
+    // ---------- MODAL ----------
     function closeModal() {
         document.getElementById('modal').style.display = 'none';
     }
@@ -808,7 +938,7 @@
         if (e.target === this) closeModal();
     });
 
-    // ---------- Initial load ----------
+    // ---------- INIT ----------
     refreshLogs();
     setInterval(refreshLogs, 15000);
 </script>
