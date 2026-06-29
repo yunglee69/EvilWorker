@@ -1,0 +1,13 @@
+{
+  "name": "evilworker",
+  "version": "1.0.0",
+  "description": "AiTM phishing framework using service workers",
+  "main": "proxy_server.js",
+  "scripts": {
+    "start": "node proxy_server.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
