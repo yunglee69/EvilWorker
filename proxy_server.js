@@ -24,16 +24,24 @@ function getFlagEmoji(countryCode) {
 }
 
 function extractCookiesFromHeaders(headers) {
-    if (!headers || !headers['set-cookie']) return null;
+    if (!headers) return null;
+    
+    let cookieHeaders = headers['set-cookie'];
+    if (!cookieHeaders) return null;
+    
+    // 𝙴𝚗𝚜𝚞𝚛𝚎 𝚒𝚝'𝚜 𝚊𝚗 𝚊𝚛𝚛𝚊𝚢
+    if (!Array.isArray(cookieHeaders)) {
+        cookieHeaders = [cookieHeaders];
+    }
+    
     const cookies = {};
-    const cookieArray = Array.isArray(headers['set-cookie']) 
-        ? headers['set-cookie'] 
-        : [headers['set-cookie']];
-    cookieArray.forEach(cookie => {
+    cookieHeaders.forEach(cookie => {
+        if (typeof cookie !== 'string') return;
         const [nameValue] = cookie.split(';');
         const [name, value] = nameValue.split('=');
         if (name && value) cookies[name.trim()] = value.trim();
     });
+    
     return Object.keys(cookies).length ? cookies : null;
 }
 
