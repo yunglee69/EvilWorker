@@ -639,29 +639,69 @@
     let allLogs = [];
     let map = null;
     let chart = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 20;
 
-    // ---------- WEBSOCKET (secure) ----------
-    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const ws = new WebSocket(wsProtocol + location.host);
-    const wsDot = document.getElementById('wsDot');
-    const wsLabel = document.getElementById('wsLabel');
+    // ---------- WEBSOCKET (with auto-reconnect & heartbeat) ----------
+    let ws;
+    
+    function connectWebSocket() {
+        const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+        ws = new WebSocket(wsProtocol + location.host);
+        const wsDot = document.getElementById('wsDot');
+        const wsLabel = document.getElementById('wsLabel');
 
-    ws.onopen = () => {
-        wsDot.className = 'ws-dot online';
-        wsLabel.textContent = 'Live';
-    };
-    ws.onclose = () => {
-        wsDot.className = 'ws-dot offline';
-        wsLabel.textContent = 'Disconnected';
-    };
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'newLog') {
-            showToast('📥 New capture: ' + data.file);
-            refreshLogs();
-        }
-    };
+        ws.onopen = () => {
+            wsDot.className = 'ws-dot online';
+            wsLabel.textContent = 'Live';
+            reconnectAttempts = 0;
+            // Start heartbeat
+            startHeartbeat();
+        };
 
+        ws.onclose = () => {
+            wsDot.className = 'ws-dot offline';
+            wsLabel.textContent = 'Disconnected';
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.min(5000 + reconnectAttempts * 1000, 30000);
+                console.log(`🔄 Reconnecting... (${reconnectAttempts}/${maxReconnectAttempts}) in ${delay/1000}s`);
+                setTimeout(connectWebSocket, delay);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'newLog') {
+                    showToast('📥 New capture: ' + data.file);
+                    refreshLogs();
+                } else if (data === 'pong') {
+                    // Heartbeat response
+                }
+            } catch (e) {
+                // Not JSON, ignore
+            }
+        };
+    }
+
+    // ---------- HEARTBEAT (ping every 25s) ----------
+    let heartbeatInterval;
+    
+    function startHeartbeat() {
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 25000);
+    }
+
+    // ---------- SHOW TOAST ----------
     function showToast(msg, isError = false) {
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
@@ -770,7 +810,6 @@
         map.eachLayer(layer => {
             if (layer instanceof L.Marker) map.removeLayer(layer);
         });
-        // Placeholder — will be replaced with real IP markers later
         L.marker([20, 0]).addTo(map)
             .bindPopup('📍 IP locations will appear here once you have captures.');
     }
@@ -939,7 +978,11 @@
     });
 
     // ---------- INIT ----------
+    // Start WebSocket connection
+    connectWebSocket();
+    // Fetch initial logs
     refreshLogs();
+    // Auto-refresh every 15 seconds
     setInterval(refreshLogs, 15000);
 </script>
 </body>
