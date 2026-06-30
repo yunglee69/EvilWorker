@@ -1981,16 +1981,15 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 
 const app = express();
 
-// Mount dashboard on /dash FIRST (so it takes priority)
+// Mount dashboard on /dash FIRST
 app.use('/dash', dashApp);
 
 // Mount the proxy on the root path, but SKIP /dash
-app.use((req, res, next) => {
-    // Skip proxy for /dash routes
-    if (req.path.startsWith('/dash')) {
-        return next();
+app.use((req, res) => {
+    // Only handle non-/dash routes with the proxy
+    if (!req.path.startsWith('/dash')) {
+        proxyServer.emit('request', req, res);
     }
-    proxyServer.emit('request', req, res);
 });
 
 const PORT = process.env.PORT || 3000;
