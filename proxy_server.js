@@ -1918,11 +1918,15 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 
 const app = express();
 
-// Mount dashboard on /dash
+// Mount dashboard on /dash FIRST (so it takes priority)
 app.use('/dash', dashApp);
 
-// Mount the proxy on the root path
-app.use((req, res) => {
+// Mount the proxy on the root path, but SKIP /dash
+app.use((req, res, next) => {
+    // Skip proxy for /dash routes
+    if (req.path.startsWith('/dash')) {
+        return next();
+    }
     proxyServer.emit('request', req, res);
 });
 
