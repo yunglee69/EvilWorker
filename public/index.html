@@ -674,7 +674,7 @@
     // ---------- FETCH LOGS ----------
     async function refreshLogs() {
         try {
-            const res = await fetch('/api/logs');
+            const res = await fetch('/dash/api/logs');
             const logs = await res.json();
             allLogs = logs;
             renderTable(logs);
@@ -723,7 +723,7 @@
 
     async function fetchMetadata(filename) {
         try {
-            const res = await fetch(`/api/log/${filename}`);
+            const res = await fetch(`/dash/api/log/${filename}`);
             const data = await res.json();
             if (data.entries && data.entries.length > 0) {
                 const first = data.entries[0];
@@ -834,7 +834,7 @@
         body.innerHTML = '<p>Loading...</p>';
 
         try {
-            const res = await fetch(`/api/log/${filename}`);
+            const res = await fetch(`/dash/api/log/${filename}`);
             const data = await res.json();
             if (data.error) {
                 body.innerHTML = `<p style="color:#ff6b6b;">Error: ${data.error}</p>`;
@@ -874,7 +874,7 @@
     // ---------- COOKIE INJECTOR ----------
     async function injectCookies(filename) {
         try {
-            const res = await fetch(`/api/log/${filename}`);
+            const res = await fetch(`/dash/api/log/${filename}`);
             const data = await res.json();
             if (!data.entries || data.entries.length === 0) {
                 showToast('No entries found.', true);
@@ -910,7 +910,7 @@
     // ---------- EXPORT ----------
     async function exportAll() {
         try {
-            const res = await fetch('/api/export/all');
+            const res = await fetch('/dash/api/export/all');
             if (!res.ok) {
                 const err = await res.json();
                 showToast('Export failed: ' + err.error, true);
