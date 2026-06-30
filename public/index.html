@@ -559,7 +559,7 @@
 <div class="container">
     <!-- Header -->
     <header class="header glass">
-        <h1>👻 PHANTOM</h1>
+        <h1>😈 PHANTOM</h1>
         <div class="header-actions">
             <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
             <button class="btn btn-primary" onclick="exportAll()">📦 Export ZIP</button>
@@ -815,6 +815,15 @@
             if (ipCell) ipCell.textContent = ip;
         }
     } catch (e) { /* silently fail */ }
+}
+    // ---------- UPDATE STATS ----------
+function updateStats(logs) {
+    document.getElementById('total').textContent = logs.length;
+    if (logs.length > 0) {
+        document.getElementById('last').textContent = new Date(logs[0].modified).toLocaleString();
+    } else {
+        document.getElementById('last').textContent = 'No captures';
+    }
 }
     // ---------- MAP ----------
     function updateMap(logs) {
