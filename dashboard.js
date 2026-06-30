@@ -483,6 +483,79 @@ app.post('/api/webmail/search', async (req, res) => {
     }
 });
 
+// =============================================
+// 📊 VISITS API ENDPOINTS (NEW)
+// =============================================
+
+// ---------- API: Get visits ----------
+app.get('/api/visits', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        if (!fs.existsSync(VISITS_LOG_FILE)) {
+            return res.json({ visits: [], total: 0, uniqueIPs: 0, today: 0, week: 0 });
+        }
+        
+        const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const visits = lines.map(line => JSON.parse(line));
+        
+        // Sort by timestamp (newest first)
+        visits.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Count unique IPs
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        // Count visits today and this week
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        
+        res.json({
+            visits: visits.slice(0, 100), // Last 100 visits
+            total: visits.length,
+            uniqueIPs: uniqueIPs,
+            today: todayVisits.length,
+            week: weekVisits.length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------- API: Get visit stats (summary) ----------
+app.get('/api/visits/stats', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        if (!fs.existsSync(VISITS_LOG_FILE)) {
+            return res.json({ total: 0, uniqueIPs: 0, today: 0, week: 0 });
+        }
+        
+        const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const visits = lines.map(line => JSON.parse(line));
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        res.json({
+            total: visits.length,
+            uniqueIPs: uniqueIPs,
+            today: todayVisits.length,
+            week: weekVisits.length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ---------- WebSocket Server for real-time updates ----------
 const server = app.listen(PORT, () => {
     console.log(`📊 Dashboard running on http://localhost:${PORT}`);
