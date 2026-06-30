@@ -703,20 +703,6 @@
         };
     }
 
-    ws.onmessage = (event) => {
-    try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'newLog') {
-            showToast('📥 New capture: ' + data.file);
-            refreshLogs();
-        } else if (data === 'pong' || data.type === 'pong') {
-            // Heartbeat response - ignore
-        }
-    } catch (e) {
-        // Not JSON, ignore
-    }
-};
-
     // ---------- HEARTBEAT (ping every 25s) ----------
     let heartbeatInterval;
     
