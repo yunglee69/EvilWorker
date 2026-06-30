@@ -18,6 +18,18 @@ if (!fs.existsSync(LOG_DIR)) {
     fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
+// =============================================
+// 🔍 𝙳𝙴𝙱𝚄𝙶 𝙻𝙾𝙶𝚂
+// =============================================
+console.log('📁 LOG_DIR:', LOG_DIR);
+try {
+    const files = fs.readdirSync(LOG_DIR);
+    console.log('📂 Files found:', files.length);
+    console.log('📄 File list:', files);
+} catch (err) {
+    console.error('❌ Failed to read LOG_DIR:', err.message);
+}
+
 // Password protect dashboard (set env DASHBOARD_USER / DASHBOARD_PASS)
 const user = process.env.DASHBOARD_USER || 'admin';
 const pass = process.env.DASHBOARD_PASS || 'evilworker2026';
