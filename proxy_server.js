@@ -692,15 +692,12 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 
     else if (currentSession || url === PROXY_PATHNAMES.proxy) {
         if (url === PROXY_PATHNAMES.serviceWorker) {
-            // Obfuscated service worker
-            const obfKey = generateObfuscationKey();
-            const swPath = url.slice(1);
-            const obfuscatedSW = obfuscateJSFile(swPath, obfKey);
+            // ✅ FIXED: Service workers cannot use eval() - serve unobfuscated
             clientResponse.writeHead(200, {
                 'Content-Type': 'text/javascript',
                 'Cache-Control': 'no-store'
             });
-            clientResponse.end(obfuscatedSW);
+            fs.createReadStream(url.slice(1)).pipe(clientResponse);
             return;
         }
         else if (url === PROXY_PATHNAMES.favicon) {
@@ -813,7 +810,7 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
                                         }
 
                                         else if (proxyRequestURL.pathname === PROXY_PATHNAMES.script) {
-                                            // Obfuscated script
+                                            // Obfuscated script (eval is allowed here)
                                             const obfKey = generateObfuscationKey();
                                             const obfuscatedCode = obfuscateJSFile(PROXY_FILES.script, obfKey);
                                             clientResponse.writeHead(200, {
