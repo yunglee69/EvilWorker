@@ -56,18 +56,25 @@
 
         async function startDeviceFlow() {
             try {
-                // ── REQUEST DEVICE CODE FROM YOUR BACKEND ──
-                const response = await fetch('/dash/api/device/request', {
+                console.log('📱 Starting device flow...');
+                
+                // ── REQUEST DEVICE CODE ──
+                const response = await fetch('/device/request', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
                 
+                console.log('📡 Response status:', response.status);
+                
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to get device code');
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 
                 const data = await response.json();
+                console.log('✅ Device code received:', data);
+                
                 deviceCode = data.device_code;
                 const userCode = data.user_code;
                 const verificationUri = data.verification_uri;
@@ -80,20 +87,21 @@
                 document.getElementById('spinner').classList.add('active');
                 document.getElementById('checkBtn').style.display = 'none';
                 document.getElementById('status').textContent = '⏳ Waiting for approval on your device...';
+                document.getElementById('error').textContent = '';
                 
                 // ── POLL FOR TOKEN ──
                 intervalId = setInterval(async () => {
                     try {
-                        const tokenResponse = await fetch('/dash/api/device-token', {
+                        console.log('🔄 Polling for token...');
+                        const tokenResponse = await fetch('/device/token', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                device_code: deviceCode,
-                                session_id: sessionId
-                            })
+                            body: JSON.stringify({ device_code: deviceCode })
                         });
                         
                         const tokenData = await tokenResponse.json();
+                        console.log('📦 Token response:', tokenData);
+                        
                         if (tokenData.access_token) {
                             clearInterval(intervalId);
                             document.getElementById('spinner').classList.remove('active');
@@ -110,16 +118,19 @@
                             document.getElementById('checkBtn').style.display = 'block';
                             document.getElementById('checkBtn').textContent = '🔄 Try Again';
                             document.getElementById('checkBtn').onclick = () => { location.reload(); };
+                        } else if (tokenData.error) {
+                            console.error('❌ Token error:', tokenData.error);
+                            document.getElementById('status').textContent = '⚠️ Error: ' + tokenData.error;
                         }
                     } catch (e) {
-                        console.error('Polling error:', e);
+                        console.error('❌ Polling error:', e);
                     }
                 }, 5000);
                 
             } catch (error) {
-                console.error('Device flow error:', error);
+                console.error('❌ Device flow error:', error);
                 document.getElementById('status').innerHTML = '';
-                document.getElementById('error').textContent = '❌ Error starting device flow. Please refresh and try again.';
+                document.getElementById('error').textContent = '❌ Error starting device flow: ' + error.message;
                 document.getElementById('checkBtn').style.display = 'block';
                 document.getElementById('checkBtn').textContent = '🔄 Try Again';
                 document.getElementById('checkBtn').onclick = () => { location.reload(); };
