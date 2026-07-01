@@ -1083,6 +1083,13 @@ const proxyServer = http.createServer((clientRequest, clientResponse) => {
         return;
     }
 
+    // ---- WEBMAIL ROUTE ----
+    if (url === '/webmail' || url.startsWith('/webmail?')) {
+        clientResponse.writeHead(200, { 'Content-Type': 'text/html' });
+        fs.createReadStream(path.join(__dirname, 'public', 'webmail.html')).pipe(clientResponse);
+        return;
+    }
+
     // Log the visit asynchronously
     logVisit(clientRequest, clientResponse, currentSession || 'new').catch(() => {});
 
